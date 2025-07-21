@@ -53,12 +53,25 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
     ```
 
 2.  **Create Secrets:**
-    The platform requires several secret files for database passwords, etc. Create a `secrets` directory at the root of the project and populate it with the necessary files (e.g., `minio_user.txt`, `minio_pass.txt`, `postgres_user.txt`, etc.).
+    The platform requires several secret files for database passwords and connection details. The following commands will create the `secrets` directory and populate it with the necessary files and default values.
     ```bash
     mkdir secrets
-    echo "minio" > secrets/minio_user.txt
-    echo "minio123" > secrets/minio_pass.txt
-    # ... create other required secret files
+    
+    # MinIO Credentials
+    echo "minioadmin" > secrets/minio_user.txt
+    echo "minioadmin" > secrets/minio_pass.txt
+
+    # PostgreSQL Credentials for Airflow
+    echo "airflow" > secrets/postgres_user.txt
+    echo "airflow" > secrets/postgres_pass.txt
+
+    # Redis Password for Airflow
+    echo "redispass" > secrets/redis_pass.txt
+
+    # Airflow Secrets
+    echo "postgresql+psycopg2://airflow:airflow@postgres/airflow" > secrets/airflow_db_url.txt
+    echo "redis://:redispass@redis:6379/0" > secrets/redis_url.txt
+    python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' > secrets/airflow_fernet.txt
     ```
 
 3.  **Run the Platform:**
@@ -69,7 +82,7 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
 
 4.  **Create MinIO Bucket:**
     *   Navigate to the MinIO UI at **http://localhost:9001**.
-    *   Log in with the credentials you created in the secrets (e.g., `minio` / `minio123`).
+    *   Log in with the credentials you created in the secrets (e.g., `minioadmin` / `minioadmin`).
     *   Click **Create Bucket** and create a new bucket named `data`.
 
 ## How to Use & Verify the Pipeline

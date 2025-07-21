@@ -23,7 +23,6 @@ volumes:
   plugins: # For Airflow plugins
   grafana_data: # For Grafana persistent data
   prometheus_data: # For Prometheus time-series data
-  jaeger_data: # For Jaeger trace data
   loki_data: # For Loki persistent data (logs)
 
 # Secrets defined in docker-compose.base.yml
@@ -44,8 +43,6 @@ secrets:
     file: ./secrets/redis_url.txt
   airflow_fernet: # Fernet key for Airflow
     file: ./secrets/airflow_fernet.txt
-  # Note: superset_db_user/pass and dbt_db_user/pass are not included
-  # as Superset and dbt are not part of the requested subset.
 
 # Configs defined in docker-compose.base.yml
 configs:
@@ -55,8 +52,6 @@ configs:
     file: ./observability/loki-config.yml
   promtail_config_yml:
     file: ./observability/promtail-config.yml
-  grafana_alloy_config_river:
-    file: ./config/grafana-alloy.river
 
 # Airflow common settings (used as an anchor for reuse across all Airflow services)
 x-airflow-common: &airflow-common
@@ -73,10 +68,6 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    # Note: Generator API connections removed as those services are not included
-    # AIRFLOW_CONN_INSURANCE_GENERATOR_API: 'http://insurance-generator:5000'
-    # AIRFLOW_CONN_FINANCIAL_GENERATOR_API: 'http://financial-generator:5000'
-    # AIRFLOW_CONN_SPORTS_GENERATOR_API: 'http://sports-generator:5000'
     # Additional Python packages for Airflow
     _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-http apache-airflow-providers-amazon" # Added missing providers
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
@@ -109,7 +100,6 @@ services:
       - postgres_pass
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d # Script to create Superset DB on init
     networks:
       - data_platform_network
     healthcheck:
@@ -283,69 +273,6 @@ services:
           cpus: '0.5'
           memory: '256m'
   # FastAPI Ingestor: A Python-based API that receives data from external sources
-  # and produces it into Kafka topics for real-time processing.
-  fastapi-ingestor:
-    build:
-      context: ./fastapi_app
-    container_name: fastapi-ingestor
-    restart: always
-    ports:
-      - "8000:8000"
-    environment:
-      KAFKA_BROKER: kafka:29092 # Correct variable name for the app
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
-      MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://grafana-alloy:4318 # Add endpoint for OpenTelemetry
-    secrets:
-      - minio_user
-      - minio_pass
-    depends_on:
-      kafka:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    volumes:
-      - ./fastapi_app:/app # The volume mount ensures code changes are reflected in the container
-    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    networks:
-      - data_platform_network
-      - observability_network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"] # Use the app's health endpoint
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: '256m'
-
-  # Webhook Listener: A placeholder service to demonstrate listening for events
-  # from MinIO (e.g., new file uploads) to trigger downstream actions.
-  webhook-listener:
-    build: ./webhook_listener_app
-    container_name: webhook-listener
-    restart: always
-    ports:
-      - "3001:8081"
-    secrets:
-      - minio_user
-      - minio_pass
-    depends_on:
-      minio:
-        condition: service_healthy
-    volumes:
-      - ./webhook_listener_app:/app
-    command: ["python", "app.py"]
-    networks:
-      - data_platform_network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   ################
   # Spark Stack (from docker-compose.processing.yml)
@@ -725,53 +652,6 @@ services:
           cpus: '0.5'
           memory: '512m'
 
-  # Jaeger: Distributed tracing system.
-  # Collects and visualizes traces from instrumented applications (e.g., FastAPI).
-  jaeger:
-    image: jaegertracing/all-in-one:1.47
-    container_name: jaeger
-    restart: always
-    ports:
-      - "4317:4317" # OTLP gRPC receiver
-      - "16686:16686" # Jaeger UI
-    volumes:
-      - jaeger_data:/badger
-    networks:
-      - observability_network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: '512m'
-
-  # Grafana Alloy: OpenTelemetry Collector distribution for metrics and logs.
-  # Can collect, process, and export telemetry data to various backends.
-  grafana-alloy:
-    image: grafana/alloy:latest
-    container_name: grafana-alloy
-    command:
-      - run
-      - /etc/alloy/config.alloy
-      - --server.http.listen-addr=0.0.0.0:12345
-    restart: always
-    configs:
-      - source: grafana_alloy_config_river
-        target: /etc/alloy/config.alloy
-    depends_on:
-      - prometheus
-      - jaeger
-      - loki
-    ports:
-      - "12345:12345"
-    networks:
-      - observability_network
-    privileged: true
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: '256m'
-
   # Loki: Log aggregation system.
   # Stores and queries logs from all services in the platform.
   loki:
@@ -835,7 +715,6 @@ services:
       GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
     depends_on:
       - prometheus
-      - jaeger
       - cadvisor
     networks:
       - observability_network
