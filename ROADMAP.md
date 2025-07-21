@@ -1,41 +1,76 @@
 # Project Roadmap
 
-This document outlines potential next steps and future enhancements for the music recommendation data platform. It's divided into several key areas of development.
+This document outlines the development plan for the music recommendation data platform, detailing features from foundational data engineering to advanced machine learning.
 
-## Data Usage & Analytics
+---
 
-The "Bronze" Delta table of recommendation events is the source of truth. The next step is to refine and use this data.
+## Phase 1: Data Generation & Ingestion
 
-- [ ] **Create "Silver" Aggregated Tables:** Develop a Spark batch job (scheduled by Airflow) that reads from the bronze table, performs aggregations (e.g., count recommendations per track, per user), and saves the results to a "Silver" Delta table.
-- [ ] **Build an Analytical Dashboard:** Create a Grafana dashboard that visualizes the data from the Silver table. This could involve using a query engine like Trino/Presto or a Spark Thrift Server to expose the Delta table to Grafana.
-- [ ] **Ad-hoc Analysis with Notebooks:** Add a Jupyter Notebook service to the Docker Compose stack to allow for interactive, ad-hoc querying and analysis of the data in MinIO using PySpark.
+The foundation of any data product is rich, realistic data and a robust ingestion pipeline.
 
-## New Ingestion Processes
+### 1.1. Generate Historical Data (2024)
+-   **Complexity:** Medium
+-   **Description:** Enhance the `generate_seed_data.py` script to produce a comprehensive, static historical dataset for the year 2024. This will serve as the initial state of our data lake.
+-   **Implementation Steps:**
+    -   [ ] Generate a single, large `listening_history_2024.csv` file (~30k songs, ~500 users, millions of events).
+    -   [ ] Model user and song growth over the year (e.g., service starts with 10k songs and 200 users in Jan, ends with 30k songs and 500 users in Dec).
+    -   [ ] Implement a popularity model to simulate trends:
+        -   Give each song a base popularity score.
+        -   Inject random "sleeper hit" spikes for a few songs throughout the year.
+        -   Apply genre-level events (e.g., a temporary popularity boost for "Rock" songs after a simulated movie release).
+    -   [ ] Generate dimension data (`dim_songs.csv`, `dim_users.csv`, `graph_user_follows.csv`, etc.).
+    -   [ ] Create an initial Airflow DAG to perform a one-time upload of these historical CSVs into partitioned Delta tables in MinIO (the "Bronze" layer).
 
-A real-world platform ingests data from many sources. The following are potential new ingestion pipelines to build.
+### 1.2. Ingest Weekly Incremental Data (2025)
+-   **Complexity:** Medium
+-   **Description:** Simulate the ongoing operation of the service in 2025 by ingesting weekly data dumps. This demonstrates automated, incremental batch processing.
+-   **Implementation Steps:**
+    -   [ ] Create a Python script that generates a new `trends_YYYY-MM-DD.csv` file each time it's run.
+    -   [ ] Develop a new Airflow DAG (`ingest_weekly_trends_dag`) scheduled to run weekly.
+    -   [ ] The DAG will use a `S3KeySensor` to wait for the weekly CSV to appear in a `s3a://landing/weekly_trends/` bucket in MinIO.
+    -   [ ] Upon file detection, the DAG will trigger a Spark job to read the CSV, perform validation, and append the new data to the main `fact_listening_events` Delta table.
 
-- [ ] **Ingest User Listening History:** Create a new API endpoint (e.g., in the `.NET` service) for users to post their listening history. This data would be produced to a new `user_listening_history` Kafka topic and saved to its own Delta table by a new Spark job.
-- [ ] **Ingest Track Metadata:** Develop an Airflow DAG that periodically pulls track metadata (e.g., artist, album, genre) from a public music API (like Spotify's) and stores it in a dimension table in the data lake.
-- [ ] **Database Change Data Capture (CDC):** Add a relational database (e.g., another PostgreSQL container) to store user profiles. Use a tool like Debezium to capture changes to the user table and stream them into a `user_profiles` Kafka topic.
+---
 
-## Machine Learning Enhancements
+## Phase 2: Recommendation Engine Enhancements
 
-The ultimate goal is to replace the static recommendation logic with a data-driven model.
+Build a sophisticated, hybrid recommendation model by combining multiple signals with different weights.
 
-- [ ] **Train a Collaborative Filtering Model:**
-    - [ ] Develop a Spark MLlib batch job that reads the recommendation events and listening history from the data lake.
-    - [ ] Use this data to train a collaborative filtering model (e.g., Alternating Least Squares - ALS).
-    - [ ] Save the trained model artifacts back to MinIO.
-- [ ] **Model Serving:**
-    - [ ] Create a new endpoint in the `MusicRecommendationService`.
-    - [ ] When a request comes in, the service should load the latest trained model from MinIO.
-    - [ ] Use the model to generate dynamic, personalized recommendations for the user.
-- [ ] **Implement a Feedback Loop:**
-    - [ ] Enhance the event production to capture user feedback on the recommendations (e.g., "did the user play the recommended track?").
-    - [ ] Incorporate this feedback data into the model retraining process to continuously improve recommendation quality.
+### 2.1. Create "Silver" Layer Analytical Tables
+-   **Complexity:** Medium
+-   **Description:** Develop Spark jobs (scheduled by Airflow) to transform raw Bronze data into cleaned, aggregated Silver tables that will power the recommendation models.
+-   **Implementation Steps:**
+    -   [ ] **Weekly Trending:** Create a `weekly_trending_tracks` table by aggregating play counts over a 7-day window.
+    -   [ ] **Playlist Co-occurrence:** Create a `song_similarity_by_playlist` table by calculating which songs frequently appear in the same playlists.
+    -   [ ] **Artist/Genre Masters:** Ensure `dim_songs` and `dim_users` are clean and available.
 
-## Platform & Operational Improvements
+### 2.2. Implement Hybrid Recommendation Model
+-   **Complexity:** High
+-   **Description:** Evolve the `.NET` `RecommendationService` to fetch data from the Silver tables in MinIO and combine multiple recommendation strategies using a weighted scoring system.
+-   **Implementation Steps:**
+    -   [ ] **(Low Weight) Content-Based:** Recommend songs from the same artist or genre.
+    -   [ ] **(Low Weight) Popularity-Based:** Include tracks from the `weekly_trending_tracks` table.
+    -   [ ] **(Medium Weight) Playlist-Based:** Use the `song_similarity_by_playlist` table to find songs that are often playlisted together.
+    -   [ ] **(Medium Weight) Social-Based:** Recommend songs liked by users that the current user follows, using the `graph_user_follows` data.
+    -   [ ] **(High Weight) Collaborative Filtering:** Implement the existing "users who liked this also liked..." model, but run it on the full historical dataset.
+    -   [ ] **(High Weight) Audio Feature Similarity:** Enrich `dim_songs` with audio features (e.g., tempo, danceability). Recommend songs with a similar "vibe" by calculating vector similarity.
 
-- [ ] **Schema Management:** Integrate a Schema Registry (like the Confluent Schema Registry) to manage and enforce schemas for Kafka topics, preventing data quality issues.
-- [ ] **Data Quality Checks:** Implement data quality checks using a library like `Great Expectations` within an Airflow DAG to validate data as it moves from Bronze to Silver layers.
-- [ ] **Advanced CI/CD:** Extend the GitHub Actions workflow to include automated deployment to a staging or production environment (e.g., Kubernetes).
+---
+
+## Phase 3: Analytics & Platform Maturity
+
+Improve the operational and analytical capabilities of the platform.
+
+### 3.1. Analytics and Visualization
+-   **Complexity:** Medium
+-   **Description:** Provide tools for ad-hoc analysis and monitoring of platform metrics.
+-   **Implementation Steps:**
+    -   [ ] **Add Jupyter Notebook Service:** Integrate a Jupyter/Spark-magic container into `docker-compose.yml` for interactive data exploration of the data lake.
+    -   [ ] **Build an Analytical Dashboard:** Create a Grafana dashboard that queries the Silver tables (via a Spark Thrift Server or Trino) to visualize key metrics like "Top 10 Artists of the Month", "Genre Popularity Over Time", etc.
+
+### 3.2. Operational Improvements
+-   **Complexity:** High
+-   **Description:** Add enterprise-grade features to ensure data quality and pipeline reliability.
+-   **Implementation Steps:**
+    -   [ ] **Schema Management:** Integrate a Schema Registry (like Confluent's) to enforce schemas for Kafka topics, preventing data corruption at the source.
+    -   [ ] **Data Quality Checks:** Use a framework like Great Expectations within Airflow DAGs to run validation tests as data moves from Bronze to Silver layers (e.g., "user_id must not be null").

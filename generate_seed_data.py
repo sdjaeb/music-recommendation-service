@@ -2,8 +2,8 @@ import json
 import random
 import os
 import shutil
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List
 
 print("Starting generation of realistic seed data...")
 
@@ -15,7 +15,7 @@ GENRES = ["Pop", "Rock", "Hip-Hop", "Jazz", "Electronic", "Classical", "Country"
 ARTISTS = [f"Artist {i}" for i in range(1, 51)]
 
 # --- 1. Generate Songs ---
-songs: dict[str, Any] = []
+songs: List[Dict[str, Any]] = []
 for i in range(1, NUM_TRACKS + 1):
     songs.append({
         "trackId": 100 + i,
@@ -30,7 +30,7 @@ with open("songs.json", "w") as f:
 print(f"Generated {len(songs)} songs in songs.json")
 
 # --- 2. Generate User Personas ---
-personas = []
+personas: List[Dict[str, Any]] = []
 for i in range(1, NUM_USERS + 1):
     personas.append({
         "userId": i,
@@ -43,7 +43,7 @@ with open("personas.json", "w") as f:
 print(f"Generated {len(personas)} user personas in personas.json")
 
 # --- 3. Generate Listening History ---
-listening_history = []
+listening_history: List[Dict[str, Any]] = []
 for _ in range(NUM_EVENTS):
     persona = random.choice(personas)
     
@@ -69,7 +69,7 @@ for _ in range(NUM_EVENTS):
         "userId": persona["userId"],
         "trackId": song["trackId"],
         "eventType": event_type,
-        "timestamp": (datetime.utcnow() - timedelta(days=random.randint(0, 365))).isoformat() + "Z"
+        "timestamp": (datetime.now(timezone.utc) - timedelta(days=random.randint(0, 365))).isoformat()
     })
 
 with open("listening_history.json", "w") as f:
