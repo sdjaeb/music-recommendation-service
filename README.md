@@ -96,6 +96,23 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
     ```
     This will create a `generated_data/` directory containing dimension tables (`dim_*.csv`), relationship tables (`graph_*.csv`, `bridge_*.csv`), and the main fact table (`fact_listening_events_2024.csv`).
 
+6.  **Generate Weekly Incremental Data (Optional):**
+    To simulate ongoing data ingestion, you can generate weekly trend files for the year 2025. Each time you run the script, it will generate a new CSV containing one week of listening events.
+
+    The script uses a state file (`data_generation_state.json`) to track its progress.
+
+    ```bash
+    python generate_weekly_trends.py
+    ```
+
+    To reset the process and delete all generated weekly data and the state file, use the `--truncate` flag:
+
+    ```bash
+    python generate_weekly_trends.py --truncate
+    ```
+
+    This will create a new file inside the `generated_data/weekly_trends/` directory, named like `trends_2025-01-07.csv`.
+
 ## How to Use the Pipeline (Initial Data Load)
 
 Now that the historical data has been generated, you can use the provided Airflow DAG to ingest it into the data lake.
@@ -120,3 +137,25 @@ Now that the historical data has been generated, you can use the provided Airflo
 3.  **Monitor and Verify:**
     *   Click on the DAG name to watch the tasks execute.
     *   Once the run is successful, navigate to the MinIO UI at **http://localhost:9001**. You will see a `landing` bucket with the raw CSVs and a `data` bucket containing the new `bronze` Delta tables.
+
+## How to Use the Pipeline (Weekly Incremental Load)
+
+The weekly ingestion pipeline is designed to be automated. It runs daily, looking for new files to process.
+
+1.  **Generate a Weekly Data File:**
+    Run the script to generate a new CSV for the next week.
+    ```bash
+    python generate_weekly_trends.py
+    ```
+    This will create a new file like `trends_2025-01-07.csv` in `generated_data/weekly_trends/`.
+
+2.  **Trigger the DAG:**
+    *   On the main DAGs page in the Airflow UI, find the `weekly_trends_ingestion` DAG and toggle it on.
+    *   The DAG is scheduled to run daily, but you can trigger it manually by clicking the "Play" button.
+    *   The DAG will find the new file, upload it to MinIO, and run the Spark job. It uses an Airflow Variable to keep track of processed files so it won't re-process them on subsequent runs.
+
+3.  **Resetting Processed Files (for development):**
+    If you need to re-run the weekly ingestion for files that have already been processed, you can clear the state in Airflow:
+    *   Go to **Admin -> Variables**.
+    *   Delete the Variable with the key `processed_weekly_trends_files`.
+    *   The next time the DAG runs, it will re-process all available weekly files.
