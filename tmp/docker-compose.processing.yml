@@ -1,0 +1,102 @@
+services:
+  ################
+  # Spark Stack  #
+  ################
+
+  # Spark Master: The primary node that coordinates the Spark cluster.
+  # It allocates resources and schedules tasks on worker nodes.
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark-master
+    restart: always
+    ports:
+      - "8081:8080" # Spark Master UI (on 8081 to avoid conflict with Airflow)
+      - "7077:7077" # Spark Master internal communication port
+      - "10000:10000" # Spark Thrift Server for dbt
+    environment:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
+      # Pre-load common packages for convenience
+      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-core_2.12:2.4.0"
+    volumes:
+      - spark_events:/opt/bitnami/spark/events # Shared volume for job history
+      - ./pyspark_jobs:/opt/bitnami/spark/jobs # Mount local PySpark jobs
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  # Spark Worker: The node that executes the tasks assigned by the master.
+  # You can scale the number of workers to increase processing power.
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: spark-worker-1
+    restart: always
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_CORES: 1
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
+      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-core_2.12:2.4.0"
+    volumes:
+      - spark_events:/opt/bitnami/spark/events
+      - ./pyspark_jobs:/opt/bitnami/spark/jobs
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8081' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'
+
+  # Spark History Server: A web UI that displays information about completed Spark jobs.
+  # It reads event logs from the shared 'spark_events' volume.
+  spark-history-server:
+    image: bitnami/spark:3.5.1
+    container_name: spark-history-server
+    restart: always
+    ports:
+      - "18080:18080" # Spark History UI port
+    command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/18080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      SPARK_HISTORY_OPTS: "-Dspark.history.fs.logDirectory=file:///opt/bitnami/spark/events -Dspark.history.ui.port=18080"
+    volumes:
+      - spark_events:/opt/bitnami/spark/events
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'

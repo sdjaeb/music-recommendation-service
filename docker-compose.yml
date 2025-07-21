@@ -1,0 +1,852 @@
+# Consolidated Docker Compose for Data Platform POC
+# Includes: Kafka, Spark, MinIO, Airflow, Grafana/Prometheus
+# Assembled from: docker-compose.base.yml, docker-compose.core.yml,
+# docker-compose.ingestion.yml, docker-compose.processing.yml,
+# docker-compose.orchestration.yml, docker-compose.observability.yml
+# from https://github.com/sdjaeb/data-platform-playbook/tree/main/platform-core
+
+# Networks defined in docker-compose.base.yml
+networks:
+  observability_network:
+    driver: bridge
+  data_platform_network:
+    driver: bridge
+
+# Volumes defined in docker-compose.base.yml
+volumes:
+  # General purpose volumes
+  postgres_data: # For Airflow's metadata DB and potentially other structured data
+  minio_data: # For MinIO object storage (Data Lake)
+  spark_events: # For Spark History Server logs
+  airflow_dags: # Airflow volume for DAGs (renamed from 'dags' in base to avoid conflict with orchestration usage)
+  logs: # For Airflow task logs (renamed from 'airflow_logs' in base to match orchestration)
+  plugins: # For Airflow plugins
+  grafana_data: # For Grafana persistent data
+  prometheus_data: # For Prometheus time-series data
+  jaeger_data: # For Jaeger trace data
+  loki_data: # For Loki persistent data (logs)
+
+# Secrets defined in docker-compose.base.yml
+secrets:
+  postgres_user:
+    file: ./secrets/postgres_user.txt
+  postgres_pass:
+    file: ./secrets/postgres_pass.txt
+  minio_user:
+    file: ./secrets/minio_user.txt
+  minio_pass:
+    file: ./secrets/minio_pass.txt
+  redis_pass:
+    file: ./secrets/redis_pass.txt
+  airflow_db_url: # URL for Airflow DB (PostgreSQL)
+    file: ./secrets/airflow_db_url.txt
+  redis_url: # URL for Redis (Airflow Celery Broker)
+    file: ./secrets/redis_url.txt
+  airflow_fernet: # Fernet key for Airflow
+    file: ./secrets/airflow_fernet.txt
+  # Note: superset_db_user/pass and dbt_db_user/pass are not included
+  # as Superset and dbt are not part of the requested subset.
+
+# Configs defined in docker-compose.base.yml
+configs:
+  prometheus_yml:
+    file: ./config/prometheus.yml
+  loki_config_yml:
+    file: ./observability/loki-config.yml
+  promtail_config_yml:
+    file: ./observability/promtail-config.yml
+  grafana_alloy_config_river:
+    file: ./config/grafana-alloy.river
+
+# Airflow common settings (used as an anchor for reuse across all Airflow services)
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.2} # Use Airflow 3.0.2 as specified in todo.txt
+  environment: &airflow-common-env
+    # Core Airflow configurations
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow # Connects to the 'postgres' service
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0 # Connects to the 'redis' service
+    AIRFLOW__CORE__FERNET_KEY_FILE: /run/secrets/airflow_fernet
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Note: Generator API connections removed as those services are not included
+    # AIRFLOW_CONN_INSURANCE_GENERATOR_API: 'http://insurance-generator:5000'
+    # AIRFLOW_CONN_FINANCIAL_GENERATOR_API: 'http://financial-generator:5000'
+    # AIRFLOW_CONN_SPORTS_GENERATOR_API: 'http://sports-generator:5000'
+    # Additional Python packages for Airflow
+    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-http apache-airflow-providers-amazon" # Added missing providers
+    AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+  volumes:
+    - ./airflow_dags:/opt/airflow/dags # Renamed from ./dags to match base
+    - ./logs:/opt/airflow/logs # Renamed from ./airflow_logs to match base
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0" # Set user to prevent permission issues
+  networks:
+    - data_platform_network
+
+services:
+  #################################
+  # Core Databases & Messaging (from docker-compose.core.yml)
+  #################################
+
+  # PostgreSQL: Central relational database.
+  # Used by: Airflow (metadata store).
+  postgres:
+    image: postgres:13 # Stable PostgreSQL version
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_pass
+      POSTGRES_DB: airflow # Default database for Airflow
+    secrets:
+      - postgres_user
+      - postgres_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d # Script to create Superset DB on init
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/5432' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  # Redis: In-memory data store.
+  # Used by: Airflow (Celery message broker).
+  redis:
+    image: redis:6.2-alpine # Lightweight and stable Redis version
+    container_name: redis
+    restart: always
+    command: redis-server --requirepass $(cat /run/secrets/redis_pass) --appendonly yes
+    secrets:
+      - redis_pass
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$(cat /run/secrets/redis_pass)", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '128m'
+
+  # Zookeeper: Coordination service required for Kafka.
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'ruok' | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'
+
+  # Kafka: Distributed event streaming platform.
+  # Used for: Real-time data ingestion from FastAPI and consumption by Spark Streaming.
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092" # External port for Kafka clients
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: "-Xms512M -Xmx512M"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:29092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'
+
+  # Kafka Setup: A one-off service to create Kafka topics using a script.
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    command: "bash -c 'chmod +x /tmp/create-topics.sh && /tmp/create-topics.sh'"
+    volumes:
+      - ./kafka-setup/create-topics.sh:/tmp/create-topics.sh
+
+  # kcat (formerly kafkacat) - Kafka swiss-army-knife
+  kcat:
+    image: edenhill/kcat:1.7.1
+    platform: linux/amd64
+    container_name: kcat
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["tail -f /dev/null"]
+    networks:
+      - data_platform_network
+    depends_on:
+      - kafka
+
+  # MinIO: S3-compatible object storage.
+  # Used as: The data lake for raw, curated, and processed data layers.
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    ports:
+      - "9000:9000" # API port
+      - "9001:9001" # Console UI port
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_pass
+    secrets:
+      - minio_user
+      - minio_pass
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  ###########################
+  # Ingestion Layer (from docker-compose.ingestion.yml)
+  ###########################
+
+  # .NET Music Recommendation Service (Your POC)
+  music-recommendation-service:
+    build:
+      context: ./MusicRecommendationService
+    container_name: music-recommendation-service
+    restart: always
+    ports:
+      - "8088:80" # Expose service on port 8088
+    environment:
+      # Pass the Kafka broker address to the .NET service
+      - KAFKA_BROKER=kafka:29092
+    networks:
+      - data_platform_network
+      - observability_network # Connect to observability stack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '256m'
+  # FastAPI Ingestor: A Python-based API that receives data from external sources
+  # and produces it into Kafka topics for real-time processing.
+  fastapi-ingestor:
+    build:
+      context: ./fastapi_app
+    container_name: fastapi-ingestor
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BROKER: kafka:29092 # Correct variable name for the app
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://grafana-alloy:4318 # Add endpoint for OpenTelemetry
+    secrets:
+      - minio_user
+      - minio_pass
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./fastapi_app:/app # The volume mount ensures code changes are reflected in the container
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - data_platform_network
+      - observability_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"] # Use the app's health endpoint
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'
+
+  # Webhook Listener: A placeholder service to demonstrate listening for events
+  # from MinIO (e.g., new file uploads) to trigger downstream actions.
+  webhook-listener:
+    build: ./webhook_listener_app
+    container_name: webhook-listener
+    restart: always
+    ports:
+      - "3001:8081"
+    secrets:
+      - minio_user
+      - minio_pass
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./webhook_listener_app:/app
+    command: ["python", "app.py"]
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ################
+  # Spark Stack (from docker-compose.processing.yml)
+  ################
+
+  # Spark Master: The primary node that coordinates the Spark cluster.
+  # It allocates resources and schedules tasks on worker nodes.
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark-master
+    restart: always
+    ports:
+      - "8081:8080" # Spark Master UI (on 8081 to avoid conflict with Airflow)
+      - "7077:7077" # Spark Master internal communication port
+      - "10000:10000" # Spark Thrift Server for dbt
+    environment:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
+      # Pre-load packages for Kafka, Delta Lake, and S3 (MinIO) access
+      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
+      # Configure Spark to connect to MinIO
+      # Configure Spark to use the Delta Lake catalog
+      SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
+      SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
+      # Pass secrets as environment variables for PySpark scripts to use
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
+    volumes:
+      - spark_events:/opt/bitnami/spark/events # Shared volume for job history
+      - ./pyspark_jobs:/opt/bitnami/spark/jobs # Mount local PySpark jobs
+    secrets:
+      - minio_user
+      - minio_pass
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '1.5g'
+
+  # Spark Worker: The node that executes the tasks assigned by the master.
+  # You can scale the number of workers to increase processing power.
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: spark-worker-1
+    restart: always
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_CORES: 1
+      SPARK_WORKER_MEMORY: 1G
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
+      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
+      SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
+      SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
+    volumes:
+      - spark_events:/opt/bitnami/spark/events
+      - ./pyspark_jobs:/opt/bitnami/spark/jobs
+    secrets:
+      - minio_user
+      - minio_pass
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8081' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1.5g'
+
+  # Spark History Server: A web UI that displays information about completed Spark jobs.
+  # It reads event logs from the shared 'spark_events' volume.
+  spark-history-server:
+    image: bitnami/spark:3.5.1
+    container_name: spark-history-server
+    restart: always
+    ports:
+      - "18080:18080" # Spark History UI port
+    command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/18080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      SPARK_HISTORY_OPTS: "-Dspark.history.fs.logDirectory=file:///opt/bitnami/spark/events -Dspark.history.ui.port=18080"
+    volumes:
+      - spark_events:/opt/bitnami/spark/events
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  #####################
+  # Airflow (Celery) (from docker-compose.orchestration.yml)
+  #####################
+
+  # Airflow Init: A one-off service that initializes the Airflow database,
+  # creates the admin user, and sets file permissions. It runs and exits.
+  airflow-init:
+    <<: *airflow-common # Inherit common Airflow settings
+    container_name: airflow-init
+    entrypoint: /bin/bash # Override entrypoint for initial setup
+    command:
+      - -c # Use a more robust and syntactically correct init script
+      - |
+        echo "Setting AIRFLOW__CORE__LOAD_EXAMPLES to false..."
+        set -e
+        echo "Waiting for PostgreSQL..."
+        until pg_isready -h postgres -p 5432 -U airflow; do sleep 1; done
+        echo "PostgreSQL is ready."
+
+        echo "Waiting for Redis..."
+        # The base airflow image doesn't have redis-cli, so we install it first.
+        # This requires the container to run as root, which is set via 'user: "0:0"'.
+        apt-get update -yqq && apt-get install -yqq --no-install-recommends redis-tools && \
+        until redis-cli -h redis -a "$(cat /run/secrets/redis_pass)" ping > /dev/null 2>&1; do
+          sleep 1;
+        done
+        echo "Redis is ready."
+
+        echo "Running Airflow DB migration..."
+        airflow db migrate
+
+        echo "Creating Airflow admin user..."
+        airflow users create --username admin --password admin --firstname Airflow --lastname Admin --role Admin --email admin@example.com || true
+
+        echo "Setting permissions on Airflow volumes..."
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config} # Corrected dags volume name
+        echo "Airflow initialization complete."
+    user: "0:0" # Run as root for initial permissions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_user
+      - postgres_pass
+      - redis_pass
+      - airflow_db_url
+      - redis_url
+      - airflow_fernet
+    networks:
+      - data_platform_network
+
+  # Airflow Webserver: The user interface for Airflow.
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: api-server # In Airflow 3.0+, 'api-server' runs both the API and the UI
+    ports:
+      - "8080:8080"
+    # Set LOAD_EXAMPLES to false for webserver to hide example DAGs
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__WEBSERVER__RBAC: 'True'
+      AIRFLOW__WEBSERVER__AUTHENTICATE: 'True'
+      AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080'
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_user
+      - postgres_pass
+      - redis_pass
+      - airflow_db_url
+      - redis_url
+      - airflow_fernet
+    networks:
+      - data_platform_network
+      - observability_network
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '1g'
+
+  # Airflow Scheduler: The core component that monitors all DAGs and tasks,
+  # and triggers task instances whose dependencies have been met.
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    environment:
+      # Set LOAD_EXAMPLES to false for scheduler to avoid parsing them
+      <<: *airflow-common-env
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_user
+      - postgres_pass
+      - redis_pass
+      - airflow_db_url
+      - redis_url
+      - airflow_fernet
+    networks:
+      - data_platform_network
+      - observability_network
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'
+
+  # Airflow Worker: Executes the tasks assigned by the Celery message broker (Redis).
+  # You can scale these workers to handle more concurrent tasks.
+  airflow-worker:
+    <<: *airflow-common
+    container_name: airflow-worker
+    command: celery worker
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0" # Required for graceful shutdown
+    depends_on:
+      airflow-scheduler:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_user
+      - postgres_pass
+      - redis_pass
+      - airflow_db_url
+      - redis_url
+      - airflow_fernet
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'
+    networks:
+      - data_platform_network
+      - observability_network
+
+  # Airflow DAG Processor: Parses DAG files from the dags folder and updates them in the database.
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: airflow-dag-processor
+    command: dag-processor
+    environment:
+      <<: *airflow-common-env
+    depends_on:
+      airflow-scheduler:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    secrets:
+      - airflow_db_url
+      - redis_url
+      - airflow_fernet
+      - postgres_user
+      - postgres_pass
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '768m'
+
+  #######################
+  # Observability Stack (from docker-compose.observability.yml)
+  #######################
+
+  # cAdvisor: Container metrics collector.
+  # Provides container resource usage (CPU, memory, network I/O) to Prometheus.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor
+    privileged: true # Required for cAdvisor to access Docker daemon info
+    restart: always
+    ports:
+      - "8083:8080" # cAdvisor UI/metrics
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - observability_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'
+
+  # Prometheus: Time-series database for metrics collection and storage.
+  # Scrapes metrics from various services (e.g., cAdvisor, FastAPI, Spark).
+  prometheus:
+    image: prom/prometheus:v2.42.0
+    container_name: prometheus
+    restart: always
+    ports:
+      - "9091:9090" # Prometheus UI
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+    command: >-
+      --config.file=/etc/prometheus/prometheus.yml
+      --web.enable-remote-write-receiver
+      --storage.tsdb.path=/prometheus
+      --web.enable-lifecycle
+      --web.route-prefix=/
+      --enable-feature=exemplar-storage
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - observability_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:9090/-/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  # Jaeger: Distributed tracing system.
+  # Collects and visualizes traces from instrumented applications (e.g., FastAPI).
+  jaeger:
+    image: jaegertracing/all-in-one:1.47
+    container_name: jaeger
+    restart: always
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "16686:16686" # Jaeger UI
+    volumes:
+      - jaeger_data:/badger
+    networks:
+      - observability_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512m'
+
+  # Grafana Alloy: OpenTelemetry Collector distribution for metrics and logs.
+  # Can collect, process, and export telemetry data to various backends.
+  grafana-alloy:
+    image: grafana/alloy:latest
+    container_name: grafana-alloy
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    restart: always
+    configs:
+      - source: grafana_alloy_config_river
+        target: /etc/alloy/config.alloy
+    depends_on:
+      - prometheus
+      - jaeger
+      - loki
+    ports:
+      - "12345:12345"
+    networks:
+      - observability_network
+    privileged: true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'
+
+  # Loki: Log aggregation system.
+  # Stores and queries logs from all services in the platform.
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: always
+    ports:
+      - "3100:3100" # Loki HTTP listener
+    command: -config.file=/etc/loki/local-config.yml
+    configs:
+      - source: loki_config_yml
+        target: /etc/loki/local-config.yml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - observability_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'
+
+  # Promtail: Agent for shipping logs to Loki.
+  # Discovers and tails log files from containers and sends them to Loki.
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    restart: always
+    command: -config.file=/etc/promtail/promtail-config.yml
+    configs:
+      - source: promtail_config_yml
+        target: /etc/promtail/promtail-config.yml
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - observability_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '128m'
+
+  # Grafana: Visualization and dashboarding tool.
+  # Connects to Prometheus (metrics) and Loki (logs) to create comprehensive dashboards.
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000" # Grafana UI
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/dashboards:/var/lib/grafana/dashboards # This is for actual dashboard JSON files
+      - ./grafana_provisioning:/etc/grafana/provisioning:ro # New mount for provisioning files
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
+    depends_on:
+      - prometheus
+      - jaeger
+      - cadvisor
+    networks:
+      - observability_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '256m'

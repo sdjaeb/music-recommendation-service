@@ -1,0 +1,36 @@
+services:
+  ###########################
+  # Local AWS Emulation (LocalStack) #
+  ###########################
+
+  # LocalStack: Emulates a wide range of AWS services locally.
+  # Useful for developing and testing applications that interact with AWS
+  # without incurring costs or requiring an internet connection.
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    restart: always
+    ports:
+      - "4566:4566" # LocalStack Gateway (main endpoint)
+      - "4510-4559:4510-4559" # Service-specific ports
+    environment:
+      # Define which AWS services to enable.
+      SERVICES: s3,lambda,kafka,sqs,sns,apigateway,stepfunctions
+      # Required for Lambda Docker integration.
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack # Persist LocalStack state
+      - /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket
+    networks:
+      - data_platform_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'

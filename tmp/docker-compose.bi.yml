@@ -1,0 +1,84 @@
+services:
+  #################################
+  # Business Intelligence (Apache Superset) #
+  #################################
+
+  # Superset Initialization: A one-off service that performs database migrations
+  # and creates the initial admin user for Superset. It runs and then exits.
+  superset-init:
+    image: apache/superset:3.1.1
+    container_name: superset-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Wait for PostgreSQL and Redis to be ready
+        echo "Waiting for Superset PostgreSQL and Redis to be ready..."
+        /usr/bin/dumb-init bash -c 'until pg_isready -h postgres -p 5432 -U $$(cat /run/secrets/superset_db_user); do sleep 1; done;'
+        /usr/bin/dumb-init bash -c 'until redis-cli -h redis -a $(cat /run/secrets/redis_pass) --raw INFO; do sleep 1; done;'
+        echo "Running Superset DB upgrade..."
+        superset db upgrade
+
+        echo "Creating Superset admin user..."
+        superset fab create-admin --username admin --password admin --firstname Superset --lastname Admin --email admin@superset.com || true
+
+        echo "Superset initialization complete."
+    environment:
+      SUPERSET_DATABASE_URI: postgresql+psycopg2://$(cat /run/secrets/superset_db_user):$(cat /run/secrets/superset_db_pass)@postgres:5432/superset
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOAD_EXAMPLES: "False"
+    secrets:
+      - superset_db_user
+      - superset_db_pass
+      - redis_pass
+    volumes:
+      - superset_app_data:/app/superset_home
+      - ./superset_config/superset_config.py:/app/pythonpath/superset_config.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    restart: "no"
+
+  # Apache Superset Web UI: The main application for creating and viewing dashboards.
+  superset:
+    image: apache/superset:3.1.1
+    container_name: superset
+    restart: always
+    ports:
+      - "8088:8088" # Superset UI port
+    environment:
+      SUPERSET_DATABASE_URI: postgresql+psycopg2://$(cat /run/secrets/superset_db_user):$(cat /run/secrets/superset_db_pass)@postgres:5432/superset
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    secrets:
+      - superset_db_user
+      - superset_db_pass
+      - redis_pass
+    volumes:
+      - superset_app_data:/app/superset_home
+      - ./superset_config/superset_config.py:/app/pythonpath/superset_config.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      superset-init:
+        condition: service_completed_successfully
+    networks:
+      - data_platform_network
+      - observability_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1g'

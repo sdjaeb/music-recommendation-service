@@ -1,0 +1,10 @@
+[
+  {
+    "UserId": 1,
+    "LikedTracks": [ 101, 102, 103 ]
+  },
+  {
+    "UserId": 2,
+    "LikedTracks": [ 101, 105, 106 ]
+  }
+]

@@ -1,0 +1,3 @@
+# webhook_listener_app/requirements.txt
+# This file lists the Python dependencies for the MinIO Webhook Listener Flask application.
+flask==2.3.3

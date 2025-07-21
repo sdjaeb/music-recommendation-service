@@ -1,0 +1,55 @@
+services:
+  #################################
+  # Data Transformation (dbt)     #
+  #################################
+
+  # dbt: Data Build Tool for managing data transformations.
+  # It connects to Spark via the Thrift server and uses PostgreSQL for its metadata.
+  dbt:
+    build:
+      context: ./dbt_image # Build a custom image for native ARM64 support
+      dockerfile: Dockerfile
+    container_name: dbt
+    restart: "no" # Typically run as a one-off job or orchestrated by Airflow
+    environment:
+      # dbt profile variables (these map to variables in profiles.yml)
+      DBT_PROFILES_DIR: /usr/app/dbt_profiles
+      # Connection details for dbt's metadata store (PostgreSQL)
+      DBT_PG_HOST: postgres
+      DBT_PG_PORT: 5432
+      DBT_PG_USER: dbt_user
+      DBT_PG_PASSWORD: $(cat /run/secrets/dbt_db_pass)
+      DBT_PG_DBNAME: dbt_metadata
+      # Connection details for Spark (Thrift server)
+      DBT_SPARK_HOST: spark-master
+      DBT_SPARK_PORT: 10000
+      DBT_SPARK_SCHEMA: default # Or your desired schema
+      DBT_SPARK_CATALOG: spark_catalog # For Unity Catalog or similar
+      DBT_SPARK_CLUSTER_MODE: "false" # Set to true if running on a remote cluster
+      DBT_SPARK_METHOD: "thrift" # Connect via Thrift server
+      DBT_SPARK_AUTH: "no_auth" # Assuming no auth for local dev
+      DBT_SPARK_S3_ENDPOINT: "http://minio:9000" # MinIO endpoint for Delta Lake
+      DBT_SPARK_AWS_ACCESS_KEY_ID: $(cat /run/secrets/minio_user)
+      DBT_SPARK_AWS_SECRET_ACCESS_KEY: $(cat /run/secrets/minio_pass)
+    secrets:
+      - dbt_db_user
+      - dbt_db_pass
+      - minio_user
+      - minio_pass
+    volumes:
+      - dbt_projects_data:/usr/app/dbt_projects # Mount dbt project files
+      - ./dbt_profiles:/usr/app/dbt_profiles # Mount profiles.yml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '2g' # dbt can be memory intensive for large projects
