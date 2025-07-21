@@ -94,7 +94,7 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
     ```bash
     python generate_seed_data.py
     ```
-    This will create a `generated_data/` directory containing `dim_songs.csv`, `dim_users.csv`, and `fact_listening_events_2024.csv`.
+    This will create a `generated_data/` directory containing dimension tables (`dim_*.csv`), relationship tables (`graph_*.csv`, `bridge_*.csv`), and the main fact table (`fact_listening_events_2024.csv`).
 
 ## How to Use the Pipeline
 
