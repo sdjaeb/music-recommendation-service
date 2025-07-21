@@ -17,7 +17,7 @@ The foundation of any data product is rich, realistic data and a robust ingestio
     -   [x] Implement a popularity model to simulate trends (sleeper hits, genre events).
     -   [x] Generate dimension data (`dim_songs.csv`, `dim_users.csv`).
     -   [x] Generate relationship data (`graph_user_follows.csv`, `dim_playlists.csv`, `bridge_playlist_tracks.csv`).
-    -   [ ] Create an initial Airflow DAG to perform a one-time upload of these historical CSVs into partitioned Delta tables in MinIO (the "Bronze" layer).
+    -   [x] Create an initial Airflow DAG to perform a one-time upload of these historical CSVs into partitioned Delta tables in MinIO (the "Bronze" layer).
 
 ### 1.2. Ingest Weekly Incremental Data (2025)
 -   **Complexity:** Medium

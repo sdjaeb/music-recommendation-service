@@ -96,12 +96,27 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
     ```
     This will create a `generated_data/` directory containing dimension tables (`dim_*.csv`), relationship tables (`graph_*.csv`, `bridge_*.csv`), and the main fact table (`fact_listening_events_2024.csv`).
 
-## How to Use the Pipeline
+## How to Use the Pipeline (Initial Data Load)
 
-The next step in the roadmap is to create an Airflow DAG that will take the generated CSV files and ingest them into Delta tables in MinIO. Once that is complete, you will be able to run Spark jobs to analyze the historical data.
+Now that the historical data has been generated, you can use the provided Airflow DAG to ingest it into the data lake.
 
-For now, you can verify the platform is running by checking the service UIs:
-*   **Airflow UI:** http://localhost:8080
-*   **MinIO UI:** http://localhost:9001
-*   **Grafana UI:** http://localhost:3000
-*   **Spark Master UI:** http://localhost:8081
+1.  **Create Airflow Connections:**
+    *   Navigate to the Airflow UI at **http://localhost:8080**.
+    *   Go to **Admin -> Connections**.
+    *   Create a new connection for **MinIO**:
+        *   Conn Id: `minio_default`
+        *   Conn Type: `Amazon S3`
+        *   In "Extra", enter: `{"host": "http://minio:9000", "aws_access_key_id": "minioadmin", "aws_secret_access_key": "minioadmin"}`
+    *   Create a new connection for **Spark**:
+        *   Conn Id: `spark_default`
+        *   Conn Type: `Spark`
+        *   Host: `spark://spark-master`
+        *   Port: `7077`
+
+2.  **Trigger the DAG:**
+    *   On the main DAGs page, find the `initial_data_load` DAG and toggle it on.
+    *   Click the "Play" button on the right side of the `initial_data_load` DAG row and select "Trigger DAG".
+
+3.  **Monitor and Verify:**
+    *   Click on the DAG name to watch the tasks execute.
+    *   Once the run is successful, navigate to the MinIO UI at **http://localhost:9001**. You will see a `landing` bucket with the raw CSVs and a `data` bucket containing the new `bronze` Delta tables.

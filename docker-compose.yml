@@ -69,13 +69,15 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # Additional Python packages for Airflow
-    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-http apache-airflow-providers-amazon" # Added missing providers
+    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-http apache-airflow-providers-amazon apache-airflow-providers-apache-spark minio"
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
     - ./airflow_dags:/opt/airflow/dags # Renamed from ./dags to match base
     - ./logs:/opt/airflow/logs # Renamed from ./airflow_logs to match base
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
+    - ./pyspark_jobs:/opt/airflow/pyspark_jobs # Mount spark jobs for Airflow's SparkSubmitOperator
+    - ./generated_data:/opt/airflow/data/generated # Mount generated data for upload
   user: "${AIRFLOW_UID:-50000}:0" # Set user to prevent permission issues
   networks:
     - data_platform_network
