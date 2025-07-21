@@ -12,13 +12,11 @@ The foundation of any data product is rich, realistic data and a robust ingestio
 -   **Complexity:** Medium
 -   **Description:** Enhance the `generate_seed_data.py` script to produce a comprehensive, static historical dataset for the year 2024. This will serve as the initial state of our data lake.
 -   **Implementation Steps:**
-    -   [ ] Generate a single, large `listening_history_2024.csv` file (~30k songs, ~500 users, millions of events).
-    -   [ ] Model user and song growth over the year (e.g., service starts with 10k songs and 200 users in Jan, ends with 30k songs and 500 users in Dec).
-    -   [ ] Implement a popularity model to simulate trends:
-        -   Give each song a base popularity score.
-        -   Inject random "sleeper hit" spikes for a few songs throughout the year.
-        -   Apply genre-level events (e.g., a temporary popularity boost for "Rock" songs after a simulated movie release).
-    -   [ ] Generate dimension data (`dim_songs.csv`, `dim_users.csv`, `graph_user_follows.csv`, etc.).
+    -   [x] Generate a single, large `fact_listening_events_2024.csv` file.
+    -   [x] Model user and song growth over the year.
+    -   [x] Implement a popularity model to simulate trends (sleeper hits, genre events).
+    -   [x] Generate dimension data (`dim_songs.csv`, `dim_users.csv`).
+    -   [ ] Generate relationship data (`graph_user_follows.csv`, `bridge_playlist_tracks.csv`).
     -   [ ] Create an initial Airflow DAG to perform a one-time upload of these historical CSVs into partitioned Delta tables in MinIO (the "Bronze" layer).
 
 ### 1.2. Ingest Weekly Incremental Data (2025)
