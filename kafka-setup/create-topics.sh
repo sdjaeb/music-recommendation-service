@@ -15,6 +15,7 @@ cub kafka-ready -b kafka:29092 1 60
 TOPICS=(
     "raw_financial_events"
     "raw_insurance_claims"
+    "user_listening_history" # Topic for detailed user listening events
     "music_recommendations" # The new topic for harmanpoc
 )
 

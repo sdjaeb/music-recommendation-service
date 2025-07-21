@@ -46,6 +46,22 @@ app.MapGet("/recommendations/{trackId:int}", (int trackId, IRecommendationServic
     return Results.Ok(recommendations);
 });
 
+// New endpoint to ingest user listening events
+app.MapPost("/ingest/listening-event", (object listeningEvent, IEventProducer eventProducer, ILogger<Program> logger) => {
+    try
+    {
+        // We accept 'object' and re-serialize to pass it directly to Kafka
+        var eventJson = JsonSerializer.Serialize(listeningEvent);
+        eventProducer.Produce("user_listening_history", eventJson);
+        return Results.Accepted();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to ingest listening event.");
+        return Results.Problem("An error occurred while processing the event.", statusCode: 500);
+    }
+});
+
 // Expose the /health endpoint
 app.MapHealthChecks("/health");
 
