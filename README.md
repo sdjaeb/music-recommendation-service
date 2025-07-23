@@ -82,21 +82,32 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
     docker-compose up --build -d
     ```
 
-4.  **Generate Historical Data:**
-    This project uses a Python script to generate a large, realistic historical dataset for the year 2024. This data will be used to seed the data lake.
-    
-    First, install the required Python package (`tqdm` for a progress bar):
+4.  **Set up the Python Environment:**
+    This project uses `uv` for Python environment and package management.
+
+    First, create and activate the virtual environment:
     ```bash
-    pip install tqdm
+    # Create the virtual environment in ./.venv
+    uv venv
+
+    # Activate the environment for your current shell session
+    source .venv/bin/activate
     ```
-    
-    Now, run the generation script. This may take a minute or two to complete.
+    Your shell prompt should now be prefixed with `(harmanpoc)`.
+
+    Next, install the required Python packages:
+    ```bash
+    uv pip install tqdm
+    ```
+
+5.  **Generate Historical Data:**
+    Now that your environment is active, run the data generation script. This may take a minute or two to complete.
     ```bash
     python generate_seed_data.py
     ```
     This will create a `generated_data/` directory containing dimension tables (`dim_*.csv`), relationship tables (`graph_*.csv`, `bridge_*.csv`), and the main fact table (`fact_listening_events_2024.csv`).
 
-5.  **Generate Weekly Incremental Data (Optional):**
+6.  **Generate Weekly Incremental Data (Optional):**
     To simulate ongoing data ingestion, you can generate weekly trend files for the year 2025. Each time you run the script, it will generate a new CSV containing one week of listening events.
 
     The script uses a state file (`data_generation_state.json`) to track its progress.

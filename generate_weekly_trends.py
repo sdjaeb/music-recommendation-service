@@ -14,8 +14,7 @@ try:
 except ImportError:
     print("Info: 'tqdm' is not installed. Progress bar will not be shown.")
     print("You can install it using: pip install tqdm (or uv pip install tqdm)")
-    def tqdm(iterable, *args, **kwargs):
-        return iterable
+    sys.exit(1)
 
 # --- Configuration ---
 STATE_FILE = "data_generation_state.json"

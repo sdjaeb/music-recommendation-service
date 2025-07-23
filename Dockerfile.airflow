@@ -23,5 +23,9 @@ RUN wget -q "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-
     mv "/opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" "${SPARK_HOME}" && \
     rm /tmp/spark.tgz
 
+# Install additional python packages quietly from a requirements file
+COPY --chown=airflow:root ./requirements-airflow.txt /requirements-airflow.txt
+RUN pip install --no-cache-dir -q -r /requirements-airflow.txt
+
 # Switch back to the non-privileged airflow user
 USER airflow
