@@ -33,6 +33,22 @@ The primary goal is to showcase proficiency in a wide range of technologies and 
 | **Container**     | Docker, Docker Compose                           |
 | **CI/CD**         | GitHub Actions                                   |
 
+## Data Lake Architecture (Medallion Model)
+
+This project follows the Medallion Architecture, a common data design pattern for organizing data in a lakehouse. It consists of three distinct layers:
+
+*   **Bronze Layer (Raw Data):**
+    *   **Purpose:** This is the first stop for all incoming data. It contains the raw, unfiltered, and immutable source data, preserving the full history of each dataset.
+    *   **In this project:** The `fact_listening_events` table created by the ingestion pipelines is a Bronze table.
+
+*   **Silver Layer (Cleaned & Enriched Data):**
+    *   **Purpose:** Data from the Bronze layer is cleaned, validated, de-duplicated, and joined with other datasets. This layer represents a "single source of truth" for business analytics.
+    *   **In this project:** The `weekly_trending_tracks` and `song_similarity` tables planned in Phase 2 will be Silver tables.
+
+*   **Gold Layer (Aggregated & Business-Ready Data):**
+    *   **Purpose:** This layer contains highly aggregated data, often organized by business subject area. It's optimized for analytics, reporting, and as features for machine learning models.
+    *   **In this project:** The analytics dashboards planned in Phase 3 would be powered by Gold tables.
+
 ## Getting Started
 
 ### Prerequisites

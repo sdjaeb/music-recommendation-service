@@ -60,7 +60,7 @@ This document provides a step-by-step checklist for demonstrating the core featu
     -   **Verification Points:**
         -   **Airflow:** "The DAG run should show all green, indicating success."
         -   **MinIO Landing Zone:** "In the `landing` bucket, we can see the raw CSVs under the `historical_data/` prefix."
-        -   **MinIO Bronze Layer:** "And most importantly, in the `data` bucket, we now have a `bronze/` directory containing our new Delta tables, like `dim_songs` and the partitioned `fact_listening_events`."
+        -   **MinIO Bronze Layer:** "And most importantly, in the `data` bucket, we now have a `bronze/` directory containing our new Delta tables. This is our 'Bronze' layer—the raw, validated source of truth for our data lake."
 
 ---
 
@@ -88,5 +88,5 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ## Part 4: Next Steps (Roadmap Preview)
 
--   [ ] **Phase 2: Silver Layer & Hybrid Recommendations.** "Our next step is to build on this bronze data. We'll create cleaned, aggregated 'Silver' tables for things like weekly trending tracks and song similarity. These tables will directly feed a much more sophisticated recommendation model in our .NET service."
+-   [ ] **Phase 2: Silver Layer & Hybrid Recommendations.** "Our next step is to build on this bronze data. We'll create cleaned, aggregated 'Silver' tables—like weekly trending tracks and song similarity—which are enriched and ready for business analysis. These tables will directly feed a much more sophisticated recommendation model in our .NET service."
 -   [ ] **Phase 3: Analytics & Maturity.** "Finally, we'll add a Jupyter notebook for ad-hoc data science and build out analytical dashboards in Grafana to monitor business KPIs, not just system health."
