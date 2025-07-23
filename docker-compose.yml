@@ -55,21 +55,24 @@ configs:
 
 # Airflow common settings (used as an anchor for reuse across all Airflow services)
 x-airflow-common: &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.2} # Use Airflow 3.0.2 as specified in todo.txt
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
   environment: &airflow-common-env
     # Core Airflow configurations
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow # Connects to the 'postgres' service
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0 # Connects to the 'redis' service
     AIRFLOW__CORE__FERNET_KEY_FILE: /run/secrets/airflow_fernet
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false' # This overrides the default in airflow.cfg
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-webserver:8080/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    # Additional Python packages for Airflow
-    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-http apache-airflow-providers-amazon apache-airflow-providers-apache-spark minio"
+    # Pass MinIO credentials for Spark jobs running in client mode
+    MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
+    MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
     - ./airflow_dags:/opt/airflow/dags # Renamed from ./dags to match base
@@ -79,6 +82,9 @@ x-airflow-common: &airflow-common
     - ./pyspark_jobs:/opt/airflow/pyspark_jobs # Mount spark jobs for Airflow's SparkSubmitOperator
     - ./generated_data:/opt/airflow/data/generated # Mount generated data for upload
   user: "${AIRFLOW_UID:-50000}:0" # Set user to prevent permission issues
+  secrets:
+    - minio_user
+    - minio_pass
   networks:
     - data_platform_network
 
@@ -445,6 +451,8 @@ services:
       - airflow_db_url
       - redis_url
       - airflow_fernet
+      - minio_user
+      - minio_pass
     networks:
       - data_platform_network
 
@@ -452,6 +460,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     container_name: airflow-webserver
+    hostname: airflow-webserver
     command: api-server # In Airflow 3.0+, 'api-server' runs both the API and the UI
     ports:
       - "8080:8080"
@@ -475,6 +484,8 @@ services:
       - airflow_db_url
       - redis_url
       - airflow_fernet
+      - minio_user
+      - minio_pass
     networks:
       - data_platform_network
       - observability_network
@@ -495,6 +506,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     container_name: airflow-scheduler
+    hostname: airflow-scheduler
     command: scheduler
     environment:
       # Set LOAD_EXAMPLES to false for scheduler to avoid parsing them
@@ -513,6 +525,8 @@ services:
       - airflow_db_url
       - redis_url
       - airflow_fernet
+      - minio_user
+      - minio_pass
     networks:
       - data_platform_network
       - observability_network
@@ -530,37 +544,38 @@ services:
 
   # Airflow Worker: Executes the tasks assigned by the Celery message broker (Redis).
   # You can scale these workers to handle more concurrent tasks.
-  airflow-worker:
-    <<: *airflow-common
-    container_name: airflow-worker
-    command: celery worker
-    environment:
-      <<: *airflow-common-env
-      DUMB_INIT_SETSID: "0" # Required for graceful shutdown
-    depends_on:
-      airflow-scheduler:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    secrets:
-      - postgres_user
-      - postgres_pass
-      - redis_pass
-      - airflow_db_url
-      - redis_url
-      - airflow_fernet
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: '1g'
-    networks:
-      - data_platform_network
-      - observability_network
+  # airflow-worker:
+  #   <<: *airflow-common
+  #   container_name: airflow-worker
+  #   hostname: airflow-worker
+  #   command: celery worker
+  #   environment:
+  #     <<: *airflow-common-env
+  #     DUMB_INIT_SETSID: "0" # Required for graceful shutdown
+  #   depends_on:
+  #     airflow-scheduler:
+  #       condition: service_healthy
+  #     airflow-init:
+  #       condition: service_completed_successfully
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   secrets:
+  #     - postgres_user
+  #     - postgres_pass
+  #     - redis_pass
+  #     - airflow_db_url
+  #     - redis_url
+  #     - airflow_fernet
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'
+  #         memory: '1g'
+  #   networks:
+  #     - data_platform_network
+  #     - observability_network
 
   # Airflow DAG Processor: Parses DAG files from the dags folder and updates them in the database.
   airflow-dag-processor:
@@ -580,6 +595,8 @@ services:
       - airflow_fernet
       - postgres_user
       - postgres_pass
+      - minio_user
+      - minio_pass
     networks:
       - data_platform_network
     healthcheck:

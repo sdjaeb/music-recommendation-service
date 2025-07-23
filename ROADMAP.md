@@ -23,10 +23,10 @@ The foundation of any data product is rich, realistic data and a robust ingestio
 -   **Complexity:** Medium
 -   **Description:** Simulate the ongoing operation of the service in 2025 by ingesting weekly data dumps. This demonstrates automated, incremental batch processing.
 -   **Implementation Steps:**
-    -   [ ] Create a Python script that generates a new `trends_YYYY-MM-DD.csv` file each time it's run.
-    -   [ ] Develop a new Airflow DAG (`ingest_weekly_trends_dag`) scheduled to run weekly.
-    -   [ ] The DAG will use a `S3KeySensor` to wait for the weekly CSV to appear in a `s3a://landing/weekly_trends/` bucket in MinIO.
-    -   [ ] Upon file detection, the DAG will trigger a Spark job to read the CSV, perform validation, and append the new data to the main `fact_listening_events` Delta table.
+    -   [x] Create a Python script (`generate_weekly_trends.py`) that generates a new `trends_YYYY-MM-DD.csv` file each time it's run.
+    -   [x] Develop a new PySpark job (`process_weekly_trends.py`) to append incremental data.
+    -   [x] Develop a new Airflow DAG (`dag_weekly_trends_ingestion`) scheduled to run daily.
+    -   [x] The DAG scans for new local files, uploads them to MinIO, and triggers the Spark job to append the new data to the `fact_listening_events` Delta table.
 
 ---
 

@@ -17,3 +17,8 @@
 
 # Secrets
 secrets/
+
+# Logs and stuff
+generated_data/
+logs/
+__pycache__
