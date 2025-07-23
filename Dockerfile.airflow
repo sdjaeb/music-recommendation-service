@@ -1,0 +1,27 @@
+# Use the official Airflow 3.0.2 image as a base
+FROM apache/airflow:3.0.2
+
+# Switch to the root user to install system packages
+USER root
+
+# Install OpenJDK, which is a dependency for Spark
+RUN apt-get update -qq && \
+    apt-get install -yqq --no-install-recommends \
+    openjdk-17-jre-headless \
+    wget \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Define Spark version to match the Spark cluster
+ARG SPARK_VERSION="3.5.1"
+ARG HADOOP_VERSION="3"
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin
+
+# Download and install Spark
+RUN wget -q "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" -O /tmp/spark.tgz && \
+    tar -xzf /tmp/spark.tgz -C /opt && \
+    mv "/opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" "${SPARK_HOME}" && \
+    rm /tmp/spark.tgz
+
+# Switch back to the non-privileged airflow user
+USER airflow

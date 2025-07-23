@@ -35,24 +35,27 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 -   [ ] **Step 1: Generate Historical Data.**
     -   **Action:** Run the script to generate the 2024 dataset.
-    -   **Command:** `python generate_seed_data.py`
+    -   **Command (Sample):** `python generate_seed_data.py --sample`
+    -   **Command (Full):** `python generate_seed_data.py`
+    -   **Demo Note:** *"The full data generation is powerful but can take over an hour and create a very large file. For our demo today, we'll use the `--sample` flag, which creates a smaller 30-day dataset instantly. This is also the recommended approach for quick local development."*
     -   **Verification:** "We can see the `generated_data` directory is now populated with our 2024 dataset CSVs."
 
 -   [ ] **Step 2: Configure Airflow Connections.**
     -   **Action:** Perform the one-time setup to tell Airflow how to connect to Spark and MinIO.
     -   **Instructions:** In the Airflow UI, navigate to **Admin -> Connections** and create:
-        1.  **`minio_default`**: Type `Amazon S3`, with Extra: `{"host": "http://minio:9000", "aws_access_key_id": "minioadmin", "aws_secret_access_key": "minioadmin"}`
+        1.  **`minio_default`**:
+            -   **Conn Id:** `minio_default`
+            -   **Conn Type:** `AWS`
+            -   **AWS Access Key ID:** `minioadmin`
+            -   **AWS Secret Access Key:** `minioadmin`
+            -   **Extra:** `{"endpoint_url": "http://minio:9000"}`
         2.  **`spark_default`**: Type `Spark`, with Host: `spark://spark-master` and Port: `7077`.
 
--   [ ] **Step 3: Prepare the Data Lake.**
-    -   **Action:** Create the top-level `data` bucket in MinIO to house our processed data.
-    -   **Verification:** The `data` bucket is visible in the MinIO UI.
-
--   [ ] **Step 4: Run the Ingestion DAG.**
+-   [ ] **Step 3: Run the Ingestion DAG.**
     -   **Action:** Trigger the `initial_data_load` DAG. This pipeline will upload the raw files and then process them with Spark.
-    -   **Instructions:** In the Airflow UI, unpause and trigger the `initial_data_load` DAG.
+    -   **Instructions:** In the Airflow UI, unpause and trigger the `initial_data_load` DAG. The first task will automatically create the `landing` and `data` buckets in MinIO if they don't exist.
 
--   [ ] **Step 5: Verify the Results.**
+-   [ ] **Step 4: Verify the Results.**
     -   **Action:** Check that the data has landed and been processed correctly.
     -   **Verification Points:**
         -   **Airflow:** "The DAG run should show all green, indicating success."

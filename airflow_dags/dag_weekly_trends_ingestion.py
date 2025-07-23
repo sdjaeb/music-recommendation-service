@@ -6,25 +6,27 @@ from datetime import datetime, timedelta
 from airflow.models.dag import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.providers.minio.hooks.minio import MinioHook
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.models import Variable
 
 # --- Constants ---
 MINIO_CONN_ID = "minio_default"
 MINIO_LANDING_BUCKET = "landing"
+MINIO_DATA_BUCKET = "data"
 LOCAL_WEEKLY_DATA_PATH = "/opt/airflow/data/generated/weekly_trends"
 PROCESSED_FILES_VAR_KEY = "processed_weekly_trends_files"
 
 # --- Python Functions for Tasks ---
 def upload_new_weekly_files_to_minio(**kwargs):
     """
-    Scans for new weekly trend files locally, uploads them to MinIO,
-    and pushes the list of new S3 paths to XComs.
+    Ensures required MinIO buckets exist, scans for new weekly trend files locally,
+    uploads them to MinIO, and pushes the list of new S3 paths to XComs.
     """
-    minio_hook = MinioHook(minio_conn_id=MINIO_CONN_ID)
+    s3_hook = S3Hook(aws_conn_id=MINIO_CONN_ID)
     
-    if not minio_hook.bucket_exists(MINIO_LANDING_BUCKET):
-        minio_hook.make_bucket(MINIO_LANDING_BUCKET)
+    for bucket_name in [MINIO_LANDING_BUCKET, MINIO_DATA_BUCKET]:
+        if not s3_hook.check_for_bucket(bucket_name=bucket_name):
+            s3_hook.create_bucket(bucket_name=bucket_name)
     
     processed_files_str = Variable.get(PROCESSED_FILES_VAR_KEY, default_var="[]")
     processed_files = set(json.loads(processed_files_str))
@@ -51,8 +53,8 @@ def upload_new_weekly_files_to_minio(**kwargs):
         s3_path = f"s3a://{MINIO_LANDING_BUCKET}/{minio_object_name}"
         
         print(f"Uploading {local_file_path} to {s3_path}...")
-        minio_hook.load_file(
-            file_path=local_file_path,
+        s3_hook.load_file(
+            filename=local_file_path,
             key=minio_object_name,
             bucket_name=MINIO_LANDING_BUCKET,
             replace=True
@@ -80,6 +82,7 @@ with DAG(
         task_id="process_weekly_trend_file_with_spark",
         application="/opt/airflow/pyspark_jobs/process_weekly_trends.py",
         conn_id="spark_default",
+        packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
         verbose=True,
     ).expand(
         application_args=upload_new_files.output.map(lambda s3_path: ["--input-path", s3_path])
