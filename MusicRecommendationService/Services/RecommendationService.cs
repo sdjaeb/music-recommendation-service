@@ -1,56 +1,65 @@
 using MusicRecommendationService.Models;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace MusicRecommendationService.Services;
 
 public class RecommendationService : IRecommendationService
 {
-    // A simple data structure to hold our listening history
-    private readonly List<ListeningEvent> _listeningHistory;
-    private readonly ILookup<int, int> _userListenHistoryLookup;
+    private readonly ILogger<RecommendationService> _logger;
+    private readonly IMinioService _minioService;
 
-    public RecommendationService(IHostEnvironment hostEnvironment)
+    // --- Hybrid Model Weights (from ROADMAP.md) ---
+    private const double SimilarityWeight = 0.7;
+    private const double TrendingWeight = 0.3;
+
+    public RecommendationService(ILogger<RecommendationService> logger, IMinioService minioService)
     {
-        var historyJsonPath = Path.Combine(hostEnvironment.ContentRootPath, "Data", "listening_history.json");
-        var historyJson = File.ReadAllText(historyJsonPath);
-        _listeningHistory = JsonSerializer.Deserialize<List<ListeningEvent>>(historyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ListeningEvent>();
-
-        // Create a lookup for efficient access to a user's listening history
-        _userListenHistoryLookup = _listeningHistory.ToLookup(e => e.UserId, e => e.TrackId);
+        _logger = logger;
+        _minioService = minioService;
     }
 
-    public IEnumerable<int>? GetRecommendations(int trackId)
+    public async Task<IEnumerable<long>> GetRecommendationsAsync(int trackId, int count = 10)
     {
-        // --- Simple Collaborative Filtering Logic ---
+        _logger.LogInformation("Generating hybrid recommendations for track {TrackId}", trackId);
 
-        // 1. Find other users who also liked or completed listening to the given track.
-        var similarUserIds = _listeningHistory
-            .Where(e => e.TrackId == trackId && (e.EventType == "like" || e.EventType == "complete_listen"))
-            .Select(e => e.UserId)
-            .Distinct()
-            .Take(20) // Limit to a smaller group for performance
-            .ToList();
+        // 1. Fetch analytical data from MinIO concurrently
+        var similarSongsTask = _minioService.ReadLatestDeltaTableAsync<SongSimilarity>("data", "silver/song_similarity_by_playlist");
+        var trendingTracksTask = _minioService.ReadLatestDeltaTableAsync<TrendingTrack>("data", "silver/weekly_trending_tracks");
 
-        if (!similarUserIds.Any())
+        await Task.WhenAll(similarSongsTask, trendingTracksTask);
+
+        var similarSongs = await similarSongsTask;
+        var trendingTracks = await trendingTracksTask;
+
+        if (!similarSongs.Any() && !trendingTracks.Any())
         {
-            return null; // No one else has liked this track, can't recommend anything.
+            _logger.LogWarning("No similarity or trending data available. Cannot generate recommendations.");
+            return Enumerable.Empty<long>();
         }
 
-        // 2. Find all the other tracks that these similar users have liked or completed.
-        var potentialRecommendations = _listeningHistory
-            .Where(e => similarUserIds.Contains(e.UserId) && (e.EventType == "like" || e.EventType == "complete_listen"))
-            .Select(e => e.TrackId)
-            .Distinct()
-            .Where(t => t != trackId); // Exclude the original track
+        // 2. Calculate scores for all potential candidates
+        var recommendationScores = new Dictionary<long, double>();
 
-        // 3. Return the most popular tracks among that group.
-        return potentialRecommendations
-            .GroupBy(t => t)
-            .OrderByDescending(g => g.Count())
-            .Select(g => g.Key);
+        // a. Add candidates from song similarity (Playlist Co-occurrence)
+        var similarityCandidates = similarSongs.Where(s => s.track_id_1 == trackId || s.track_id_2 == trackId);
+        foreach (var candidate in similarityCandidates)
+        {
+            long similarTrackId = candidate.track_id_1 == trackId ? candidate.track_id_2 : candidate.track_id_1;
+            recommendationScores[similarTrackId] = recommendationScores.GetValueOrDefault(similarTrackId, 0) + (candidate.score * SimilarityWeight);
+        }
+
+        // b. Add candidates from trending tracks (Popularity-Based)
+        long maxPlayCount = trendingTracks.Any() ? trendingTracks.Max(t => t.play_count) : 1;
+        foreach (var track in trendingTracks)
+        {
+            double normalizedScore = (double)track.play_count / maxPlayCount;
+            recommendationScores[track.track_id] = recommendationScores.GetValueOrDefault(track.track_id, 0) + (normalizedScore * TrendingWeight);
+        }
+
+        // 3. Rank and return top recommendations, excluding the input track
+        return recommendationScores
+            .Where(kvp => kvp.Key != trackId)
+            .OrderByDescending(kvp => kvp.Value)
+            .Select(kvp => kvp.Key)
+            .Take(count);
     }
 }
-
-// A simple record to model our listening events
-public record ListeningEvent(int UserId, int TrackId, string EventType, DateTime Timestamp);

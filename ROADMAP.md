@@ -46,9 +46,9 @@ Build a sophisticated, hybrid recommendation model by combining multiple signals
 -   **Complexity:** High
 -   **Description:** Evolve the `.NET` `RecommendationService` to fetch data from the Silver tables in MinIO and combine multiple recommendation strategies using a weighted scoring system.
 -   **Implementation Steps:**
-    -   [ ] **(Low Weight) Content-Based:** Recommend songs from the same artist or genre.
-    -   [ ] **(Low Weight) Popularity-Based:** Include tracks from the `weekly_trending_tracks` table.
-    -   [ ] **(Medium Weight) Playlist-Based:** Use the `song_similarity_by_playlist` table to find songs that are often playlisted together.
+    -   [ ] **(Low Weight) Content-Based:** Recommend songs from the same artist or genre. (Future)
+    -   [x] **(Low Weight) Popularity-Based:** Include tracks from the `weekly_trending_tracks` table.
+    -   [x] **(Medium Weight) Playlist-Based:** Use the `song_similarity_by_playlist` table to find songs that are often playlisted together.
     -   [ ] **(Medium Weight) Social-Based:** Recommend songs liked by users that the current user follows, using the `graph_user_follows` data.
     -   [ ] **(High Weight) Collaborative Filtering:** Implement the existing "users who liked this also liked..." model, but run it on the full historical dataset.
     -   [ ] **(High Weight) Audio Feature Similarity:** Enrich `dim_songs` with audio features (e.g., tempo, danceability). Recommend songs with a similar "vibe" by calculating vector similarity.

@@ -2,5 +2,5 @@ namespace MusicRecommendationService.Services;
 
 public interface IRecommendationService
 {
-    IEnumerable<int>? GetRecommendations(int trackId);
+    Task<IEnumerable<long>> GetRecommendationsAsync(int trackId, int count = 10);
 }
