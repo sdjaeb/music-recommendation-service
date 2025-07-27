@@ -73,6 +73,9 @@ x-airflow-common: &airflow-common
     # Pass MinIO credentials for Spark jobs running in client mode
     MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
     MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
+    # Automatically provision Airflow connections to remove manual setup step
+    AIRFLOW_CONN_MINIO_DEFAULT: 'aws://minioadmin:minioadmin@?endpoint_url=http%3A%2F%2Fminio%3A9000'
+    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark%3A%2F%2Fspark-master:7077'
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
     - ./airflow_dags:/opt/airflow/dags # Renamed from ./dags to match base
@@ -111,7 +114,7 @@ services:
     networks:
       - data_platform_network
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/5432' || exit 1"]
+      test: ["CMD", "pg_isready", "-U", "airflow", "-d", "airflow", "-h", "localhost"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -188,6 +191,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    stop_grace_period: 30s # Allow time for graceful shutdown and zookeeper deregistration
     deploy:
       resources:
         limits:
@@ -289,7 +293,9 @@ services:
   # Spark Master: The primary node that coordinates the Spark cluster.
   # It allocates resources and schedules tasks on worker nodes.
   spark-master:
-    image: bitnami/spark:3.5.1
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-base
     container_name: spark-master
     restart: always
     ports:
@@ -298,16 +304,16 @@ services:
       - "10000:10000" # Spark Thrift Server for dbt
     environment:
       SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master # Advertise with the service name
       SPARK_RPC_AUTHENTICATION_ENABLED: "no"
       SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
-      # Pre-load packages for Kafka, Delta Lake, and S3 (MinIO) access
+      SPARK_DAEMON_MEMORY: "1g" # Explicitly set daemon memory
+      SPARK_EVENT_LOG_DIR: file:///opt/bitnami/spark/events # Correct variable for Bitnami image
+      # Pass secrets as environment variables for PySpark scripts to use
+      # Restore global Spark settings for cluster stability
       SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
-      # Configure Spark to connect to MinIO
-      # Configure Spark to use the Delta Lake catalog
       SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
       SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
-      # Pass secrets as environment variables for PySpark scripts to use
       MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
       MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
     volumes:
@@ -319,7 +325,7 @@ services:
     networks:
       - data_platform_network
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 8080"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -333,17 +339,24 @@ services:
   # Spark Worker: The node that executes the tasks assigned by the master.
   # You can scale the number of workers to increase processing power.
   spark-worker:
-    image: bitnami/spark:3.5.1
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-base
     container_name: spark-worker-1
+    ports:
+      - "8082:8081" # Expose worker UI on host port 8082
     restart: always
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_WEBUI_HOST: spark-worker-1 # Use service name for UI links
       SPARK_WORKER_CORES: 1
-      SPARK_WORKER_MEMORY: 1G
+      SPARK_DAEMON_MEMORY: "1g" # Explicitly set daemon memory
+      SPARK_WORKER_MEMORY: 1280M # Increased memory to prevent resource errors
       SPARK_RPC_AUTHENTICATION_ENABLED: "no"
       SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_HISTORY_FS_LOG_DIRECTORY: file:///opt/bitnami/spark/events
+      SPARK_EVENT_LOG_DIR: file:///opt/bitnami/spark/events # Correct variable for Bitnami image
+      # Restore global Spark settings for cluster stability
       SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
       SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
       SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
@@ -361,10 +374,10 @@ services:
     networks:
       - data_platform_network
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8081' || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "nc -z spark-master 7077"]
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
     deploy:
       resources:
         limits:
@@ -374,25 +387,24 @@ services:
   # Spark History Server: A web UI that displays information about completed Spark jobs.
   # It reads event logs from the shared 'spark_events' volume.
   spark-history-server:
-    image: bitnami/spark:3.5.1
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-base
     container_name: spark-history-server
     restart: always
     ports:
       - "18080:18080" # Spark History UI port
     command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/18080' || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 18080"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 30s
     environment:
       SPARK_HISTORY_OPTS: "-Dspark.history.fs.logDirectory=file:///opt/bitnami/spark/events -Dspark.history.ui.port=18080"
     volumes:
       - spark_events:/opt/bitnami/spark/events
-    depends_on:
-      spark-master:
-        condition: service_healthy
     networks:
       - data_platform_network
     deploy:
@@ -419,11 +431,8 @@ services:
         echo "Waiting for PostgreSQL..."
         until pg_isready -h postgres -p 5432 -U airflow; do sleep 1; done
         echo "PostgreSQL is ready."
-
         echo "Waiting for Redis..."
-        # The base airflow image doesn't have redis-cli, so we install it first.
-        # This requires the container to run as root, which is set via 'user: "0:0"'.
-        apt-get update -yqq && apt-get install -yqq --no-install-recommends redis-tools && \
+        # redis-tools is now pre-installed in the custom Dockerfile.
         until redis-cli -h redis -a "$(cat /run/secrets/redis_pass)" ping > /dev/null 2>&1; do
           sleep 1;
         done
@@ -470,12 +479,16 @@ services:
       AIRFLOW__WEBSERVER__RBAC: 'True'
       AIRFLOW__WEBSERVER__AUTHENTICATE: 'True'
       AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080'
+      AIRFLOW__WEBSERVER__WEB_SERVER_HOST: 'airflow-webserver'
+      AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8080'
     depends_on:
       airflow-init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      spark-master:
         condition: service_healthy
     secrets:
       - postgres_user
@@ -508,6 +521,8 @@ services:
     container_name: airflow-scheduler
     hostname: airflow-scheduler
     command: scheduler
+    ports:
+      - "4040:4040" # Expose Spark Driver UI for jobs running in client mode
     environment:
       # Set LOAD_EXAMPLES to false for scheduler to avoid parsing them
       <<: *airflow-common-env
@@ -517,6 +532,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      spark-master:
         condition: service_healthy
     secrets:
       - postgres_user
@@ -585,10 +602,10 @@ services:
     environment:
       <<: *airflow-common-env
     depends_on:
-      airflow-scheduler:
-        condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
+      postgres: # Add explicit dependency on the database
+        condition: service_healthy
     secrets:
       - airflow_db_url
       - redis_url
@@ -679,7 +696,7 @@ services:
     restart: always
     ports:
       - "3100:3100" # Loki HTTP listener
-    command: -config.file=/etc/loki/local-config.yml
+    command: -config.file=/etc/loki/local-config.yml -validation.allow-structured-metadata=false
     configs:
       - source: loki_config_yml
         target: /etc/loki/local-config.yml
@@ -692,6 +709,12 @@ services:
         limits:
           cpus: '0.25'
           memory: '256m'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Promtail: Agent for shipping logs to Loki.
   # Discovers and tails log files from containers and sends them to Loki.
@@ -707,7 +730,8 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
-      - loki
+      loki:
+        condition: service_healthy
     networks:
       - observability_network
     deploy:

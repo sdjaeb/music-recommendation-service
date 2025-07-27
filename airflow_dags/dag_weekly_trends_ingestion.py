@@ -81,6 +81,7 @@ with DAG(
     process_with_spark = SparkSubmitOperator.partial(
         task_id="process_weekly_trend_file_with_spark",
         application="/opt/airflow/pyspark_jobs/process_weekly_trends.py",
+        py_files="/opt/airflow/pyspark_jobs/spark_utils.py",
         conn_id="spark_default",
         packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
         verbose=True,

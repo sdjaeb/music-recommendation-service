@@ -3,7 +3,8 @@
 # This script creates the missing placeholder directories and configuration
 # files required by the docker-compose.yml in the harmanpoc project.
 
-PROJECT_ROOT="/Users/sdjaeb/dev/harmanpoc"
+# Get the directory where the script is located, which is the project root.
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 echo "Creating placeholder directories for dependent services..."
 mkdir -p "$PROJECT_ROOT/airflow_dags"
@@ -38,6 +39,9 @@ ingester:
     final_sleep: 0s
   chunk_idle_period: 5m
   chunk_retain_period: 30s
+  wal:
+    enabled: true
+    dir: /loki/wal
 schema_config:
   configs:
     - from: 2020-10-24
@@ -52,9 +56,11 @@ storage_config:
     active_index_directory: /loki/boltdb-shipper-active
     cache_location: /loki/boltdb-shipper-cache
     cache_ttl: 24h
-    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
+compactor:
+  working_directory: /loki/compactor
+
 EOF
 
 # --- Minimal Promtail Config ---

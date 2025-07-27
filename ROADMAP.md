@@ -38,9 +38,9 @@ Build a sophisticated, hybrid recommendation model by combining multiple signals
 -   **Complexity:** Medium
 -   **Description:** Develop Spark jobs (scheduled by Airflow) to transform raw Bronze data into cleaned, aggregated Silver tables that will power the recommendation models.
 -   **Implementation Steps:**
-    -   [ ] **Weekly Trending:** Create a `weekly_trending_tracks` table by aggregating play counts over a 7-day window.
-    -   [ ] **Playlist Co-occurrence:** Create a `song_similarity_by_playlist` table by calculating which songs frequently appear in the same playlists.
-    -   [ ] **Artist/Genre Masters:** Ensure `dim_songs` and `dim_users` are clean and available.
+    -   [x] **Weekly Trending:** Create a `weekly_trending_tracks` table by aggregating play counts over a 7-day window.
+    -   [x] **Playlist Co-occurrence:** Create a `song_similarity_by_playlist` table by calculating which songs frequently appear in the same playlists.
+    -   [x] **Artist/Genre Masters:** Ensure `dim_songs` and `dim_users` are clean and available.
 
 ### 2.2. Implement Hybrid Recommendation Model
 -   **Complexity:** High
