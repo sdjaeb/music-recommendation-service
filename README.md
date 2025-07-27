@@ -142,28 +142,13 @@ This project follows the Medallion Architecture, a common data design pattern fo
 
 ## How to Use the Pipeline (Initial Data Load)
 
-Now that the historical data has been generated, you can use the provided Airflow DAG to ingest it into the data lake.
+Now that the historical data has been generated, you can use the provided Airflow DAG to ingest it into the data lake. The necessary Airflow connections (`minio_default` and `spark_default`) are automatically created when the platform starts.
 
-1.  **Create Airflow Connections:**
-    *   Navigate to the Airflow UI at **http://localhost:8080**.
-    *   Go to **Admin -> Connections**.
-    *   Create a new connection for **MinIO**:
-        *   Conn Id: `minio_default`
-        *   Conn Type: `AWS`
-        *   **AWS Access Key ID**: `minioadmin`
-        *   **AWS Secret Access Key**: `minioadmin`
-        *   In "Extra", enter: `{"endpoint_url": "http://minio:9000"}`
-    *   Create a new connection for **Spark**:
-        *   Conn Id: `spark_default`
-        *   Conn Type: `Spark`
-        *   Host: `spark://spark-master`
-        *   Port: `7077`
-
-2.  **Trigger the DAG:**
+1.  **Trigger the DAG:**
     *   On the main DAGs page, find the `initial_data_load` DAG and toggle it on.
     *   Click the "Play" button on the right side of the `initial_data_load` DAG row and select "Trigger DAG".
 
-3.  **Monitor and Verify:**
+2.  **Monitor and Verify:**
     *   Click on the DAG name to watch the tasks execute.
     *   Once the run is successful, navigate to the MinIO UI at **http://localhost:9001**. You will see a `landing` bucket with the raw CSVs and a `data` bucket containing the new `bronze` Delta tables.
 
