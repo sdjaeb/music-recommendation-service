@@ -11,6 +11,7 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 MINIO_CONN_ID = "minio_default"
 MINIO_LANDING_BUCKET = "landing"
 MINIO_DATA_BUCKET = "data"
+SPARK_PACKAGES = "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0"
 LOCAL_DATA_PATH = "/opt/airflow/data/generated"
 
 # --- Python Functions for Tasks ---
@@ -59,11 +60,7 @@ with DAG(
     1.  **Upload to Landing Zone**: Takes the locally generated CSV files and uploads them to a 'landing' bucket in MinIO.
     2.  **Process with Spark**: Triggers a Spark job to read the raw CSVs from the landing zone, process them, and save them as partitioned Delta tables in the 'bronze' layer of the data lake.
     
-    **Note**: You must create a `spark_default` connection in the Airflow UI (Admin -> Connections) pointing to the Spark Master:
-    - Conn Id: `spark_default`
-    - Conn Type: `Spark`
-    - Host: `spark://spark-master`
-    - Port: `7077`
+    **Note**: The `spark_default` and `minio_default` connections are created automatically from environment variables at startup.
     """
 ) as dag:
     
@@ -75,9 +72,10 @@ with DAG(
     process_with_spark = SparkSubmitOperator(
         task_id="process_historical_data_with_spark",
         application="/opt/airflow/pyspark_jobs/process_historical_data.py",
+        py_files="/opt/airflow/pyspark_jobs/spark_utils.py",
         conn_id="spark_default",
-        packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
-        verbose=True,
+        packages=SPARK_PACKAGES,
+        verbose=True
     )
 
     upload_to_landing_zone >> process_with_spark
