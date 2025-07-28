@@ -28,6 +28,7 @@ with DAG(
     calculate_song_similarity = SparkSubmitOperator(
         task_id="calculate_song_similarity_with_spark",
         application="/opt/airflow/pyspark_jobs/process_song_similarity.py",
+        py_files="/opt/airflow/pyspark_jobs/spark_utils.py",
         conn_id="spark_default",
         packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
         verbose=True,

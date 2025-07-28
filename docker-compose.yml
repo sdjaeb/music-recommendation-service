@@ -285,7 +285,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -762,10 +762,14 @@ services:
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
+      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel,marcusolsson-json-datasource"
     depends_on:
-      - prometheus
-      - cadvisor
+      prometheus:
+        condition: service_started
+      cadvisor:
+        condition: service_started
+      music-recommendation-service:
+        condition: service_healthy
     networks:
       - observability_network
     healthcheck:

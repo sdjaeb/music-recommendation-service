@@ -100,7 +100,57 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ---
 
-## Part 5: Next Steps (Roadmap Preview)
+## Part 5: User Analytics Dashboard
+
+*"Now that we have our core analytical tables, we can create dashboards for business users. We'll run a new pipeline to summarize user engagement and then view it in Grafana."*
+
+-   [ ] **Step 1: Run the User Analytics DAG.**
+    -   **Action:** Trigger the `silver_user_analytics_processing` DAG.
+    -   **Instructions:** In the Airflow UI, unpause and trigger the `silver_user_analytics_processing` DAG.
+    -   **Verification:** "The DAG run is successful, and we now have a `user_analytics_summary` table in our Silver layer."
+
+-   [ ] **Step 2: View the Grafana Dashboard.**
+    -   **Action:** Open the new User Analytics dashboard in Grafana.
+    -   **Instructions:** Navigate to Grafana (`http://localhost:3000`), go to Dashboards, and open the "User Analytics Dashboard".
+    -   **Verification:** "This dashboard queries our .NET service, which in turn reads the Silver table we just created. We can now see our key user engagement metrics, like the top users by total likes, updated automatically by our data pipeline. This shows the full end-to-end flow from raw data to business insight."
+
+---
+
+## Part 6: Using the Recommendation Service
+
+*"With our analytical tables in the Silver layer, our .NET recommendation service is now live. Let's query it for a user we saw on our new dashboard."*
+
+-   [ ] **Step 1: Find a User from the Dashboard.**
+    -   **Action:** Look at the "User Analytics Dashboard" in Grafana.
+    -   **Demo Note:** *"To get a good recommendation, we need a user who is active and has 'liked' songs. Our new dashboard is the perfect place to find one. Let's pick a user from the 'Top 5 Users by Total Likes' panel, for example, user `123`."*
+
+-   [ ] **Step 2: Call the Recommendation Endpoint.**
+    -   **Action:** Use `curl` or a web browser to make a GET request to the service.
+    -   **Command:** `curl http://localhost:8088/recommendations/123`
+    -   **Verification (Success):** "We get back a `200 OK` with a JSON array of track IDs. These are the personalized recommendations for user 123, calculated by our hybrid model."
+    -   **Example Success Output:**
+    - **Command (Similarity Only):** `curl http://localhost:8088/recommendations/similar/123`
+    - **Verification (Success):** "We can also call a more specific endpoint that *only* uses the song similarity model. This is useful for debugging and understanding the contribution of each model component. The results will likely be different from the hybrid model."
+    - **Example Success Output:**
+        ```json
+        [54321, 98765, 12345, 67890, 11223]
+        ```
+    -   **Verification (Not Found):** "If we try a user with no history, like `99999`, we get a `404 Not Found`, which is the correct behavior."
+    -   **Command:** `curl -i http://localhost:8088/recommendations/99999`
+
+-   [ ] **Step 3: Verify the Kafka Event.**
+    -   **Action:** Check that a `music_recommendations` event was produced to Kafka.
+    -   **Demo Note:** *"A key feature of our architecture is that every successful recommendation also generates an event. This allows other downstream systems to react, for example, by sending a push notification to the user."*
+    -   **Command (in a separate terminal):** `docker-compose exec kcat kcat -b kafka:29092 -t music_recommendations -C -o end -e`
+    -   **Verification:** "After we called the endpoint for user 123, we can see the corresponding event was published to Kafka, containing the user ID and the tracks that were recommended. This confirms the end-to-end flow is working."
+    -   **Example Kafka Message:**
+        ```json
+        {"requestedUserId":123,"recommendations":[54321,98765,12345,67890,11223],"timestamp":"..."}
+        ```
+
+---
+
+## Part 7: Next Steps (Roadmap Preview)
 
 -   [ ] **Phase 2: Silver Layer & Hybrid Recommendations.** "Our next step is to build on this bronze data. We'll continue creating cleaned, aggregated 'Silver' tables—like song similarity—which are enriched and ready for business analysis. These tables will directly feed a much more sophisticated recommendation model in our .NET service."
 -   [ ] **Phase 3: Analytics & Maturity.** "Finally, we'll add a Jupyter notebook for ad-hoc data science and build out analytical dashboards in Grafana to monitor business KPIs, not just system health."
