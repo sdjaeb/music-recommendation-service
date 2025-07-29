@@ -1,0 +1,69 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 2,
+      "title": "Top 10 Trending Tracks This Week",
+      "type": "table",
+      "datasource": {
+        "type": "doitintl-spark-datasource",
+        "uid": "SparkSQL"
+      },
+      "description": "Queries the silver Delta table directly from MinIO via the Spark Thrift Server.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "doitintl-spark-datasource",
+            "uid": "SparkSQL"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT track_id, play_count FROM delta.`s3a://data/silver/weekly_trending_tracks` ORDER BY play_count DESC LIMIT 10",
+          "format": "table"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Music Service Analytics",
+  "uid": "music-analytics",
+  "version": 1,
+  "weekStart": ""
+}

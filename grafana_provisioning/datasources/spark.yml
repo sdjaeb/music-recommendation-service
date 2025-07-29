@@ -1,0 +1,13 @@
+apiVersion: 1
+
+datasources:
+  - name: SparkSQL
+    type: doitintl-spark-datasource
+    access: proxy
+    url: http://spark-master:10000
+    isDefault: true
+    jsonData:
+      backend: "thrift"
+      thrift_transport: "binary"
+      thrift_protocol: "binary"
+      username: "airflow" # Can be any string, not used for auth

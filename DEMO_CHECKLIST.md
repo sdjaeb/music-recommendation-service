@@ -106,9 +106,41 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ---
 
-## Part 5: Using the Recommendation Service
+## Part 5: Ad-Hoc Data Exploration with Jupyter
 
-*"With our analytical tables in the Silver layer, our .NET recommendation service is now live. Let's query it for a user we saw on our new dashboard."*
+*"Now that we have processed data in our Silver layer, we can use a Jupyter Notebook for ad-hoc analysis, data science experimentation, or debugging our data pipelines. This demonstrates the platform's flexibility for interactive workloads."*
+
+-   [ ] **Step 1: Access the JupyterLab Interface.**
+    -   **Action:** Open a web browser and navigate to the JupyterLab UI.
+    -   **URL:** `http://localhost:8888`
+    -   **Verification:** "You should see the JupyterLab interface. The first time you access it, you may need to copy a token from the `docker-compose logs jupyter-notebook` output into the password field."
+
+-   [ ] **Step 2: Create and Run a Notebook.**
+    -   **Action:** Inside the `notebooks` directory, create a new Python 3 notebook.
+    -   **Demo Note:** *"Our Jupyter environment is pre-configured to connect to our Spark cluster and has access to the same helper utilities as our batch jobs. This allows for a seamless transition between development and production."*
+    -   **Code:** Copy and paste the following code into a cell and run it.
+        ```python
+        # In a new Jupyter notebook cell:
+        from pyspark_jobs.spark_utils import get
+
+---
+
+## Part 6: Business Intelligence with Grafana
+
+*"The final piece of our analytics layer is a business intelligence dashboard. This allows stakeholders to monitor key metrics without writing any code. It demonstrates how the platform serves not just data scientists, but business users as well."*
+
+-   [ ] **Step 1: Access the Grafana UI.**
+    -   **Action:** Open a web browser and navigate to the Grafana UI.
+    -   **URL:** `http://localhost:3000`
+    -   **Verification:** "You should see the Grafana home page. Our new 'Music Service Analytics' dashboard has been automatically provisioned."
+
+-   [ ] **Step 2: View the Dashboard.**
+    -   **Action:** Click on the "Music Service Analytics" dashboard.
+    -   **Verification:** "This panel is executing a live SQL query against our Spark cluster, which in turn is reading the `weekly_trending_tracks` Delta table directly from our data lake in MinIO. This shows the full, end-to-end integration from data processing to BI visualization."
+
+---
+
+## Part 7: Using the Recommendation Service
 
 -   [ ] **Step 1: Identify an Active User.**
     -   **Action:** For the demo, we'll use a known active user ID.
@@ -144,7 +176,7 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ---
 
-## Part 6: Next Steps (Roadmap Preview)
+## Part 8: Next Steps (Roadmap Preview)
 
 -   [ ] **Phase 2: Silver Layer & Hybrid Recommendations.** "Our next step is to build on this bronze data. We'll continue creating cleaned, aggregated 'Silver' tables—like song similarity—which are enriched and ready for business analysis. These tables will directly feed a much more sophisticated recommendation model in our .NET service."
 -   [ ] **Phase 3: Analytics & Maturity.** "Finally, we'll add a Jupyter notebook for ad-hoc data science and build out analytical dashboards in Grafana to monitor business KPIs, not just system health."

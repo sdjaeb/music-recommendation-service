@@ -81,6 +81,17 @@ app.MapGet("/recommendations/similar/{userId:int}", async (int userId, IRecommen
     return Results.Ok(recommendations);
 });
 
+app.MapGet("/recommendations/collaborative/{userId:int}", async (int userId, IRecommendationService recommendationService, ILogger<Program> logger) => {
+  var recommendations = (await recommendationService.GetCollaborativeRecommendationsAsync(userId, 5)).ToList();
+  
+  if (!recommendations.Any())
+  {
+      return Results.NotFound(new { message = $"No collaborative filtering recommendations found for user {userId}." });
+  }
+
+    return Results.Ok(recommendations);
+});
+
 app.MapGet("/recommendations/trending", async (IRecommendationService recommendationService, ILogger<Program> logger) => {
   // Assuming a new method in the service to get top N trending tracks
   var recommendations = (await recommendationService.GetTrendingRecommendationsAsync(10)).ToList();

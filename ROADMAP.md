@@ -62,8 +62,8 @@ Improve the operational and analytical capabilities of the platform.
 -   **Complexity:** Medium
 -   **Description:** Provide tools for ad-hoc analysis and monitoring of platform metrics.
 -   **Implementation Steps:**
-    -   [ ] **Add Jupyter Notebook Service:** Integrate a Jupyter/Spark-magic container into `docker-compose.yml` for interactive data exploration of the data lake.
-    -   [ ] **Build an Analytical Dashboard:** Create a Grafana dashboard that queries the Silver tables (via a Spark Thrift Server or Trino) to visualize key metrics like "Top 10 Artists of the Month", "Genre Popularity Over Time", etc.
+    -   [x] **Add Jupyter Notebook Service:** Integrate a Jupyter/pyspark-notebook container into `docker-compose.yml` for interactive data exploration of the data lake.
+    -   [x] **Build an Analytical Dashboard:** Create a Grafana dashboard that queries the Silver tables (via a Spark Thrift Server) to visualize key metrics like "Top 10 Artists of the Month", "Genre Popularity Over Time", etc.
 
 ### 3.2. Operational Improvements
 -   **Complexity:** High
