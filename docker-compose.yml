@@ -268,8 +268,15 @@ services:
     ports:
       - "8088:80" # Expose service on port 8088
     environment:
-      # Pass the Kafka broker address to the .NET service
-      - KAFKA_BROKER=kafka:29092
+      # Kafka configuration
+      KAFKA_BROKER: kafka:29092
+      # MinIO Data Lake configuration
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
+    secrets:
+      - minio_user
+      - minio_pass
     networks:
       - data_platform_network
       - observability_network # Connect to observability stack
@@ -278,7 +285,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -757,8 +764,12 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
     depends_on:
-      - prometheus
-      - cadvisor
+      prometheus:
+        condition: service_started
+      cadvisor:
+        condition: service_started
+      music-recommendation-service:
+        condition: service_healthy
     networks:
       - observability_network
     healthcheck:

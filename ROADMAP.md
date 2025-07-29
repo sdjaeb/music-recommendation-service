@@ -45,13 +45,12 @@ Build a sophisticated, hybrid recommendation model by combining multiple signals
 ### 2.2. Implement Hybrid Recommendation Model
 -   **Complexity:** High
 -   **Description:** Evolve the `.NET` `RecommendationService` to fetch data from the Silver tables in MinIO and combine multiple recommendation strategies using a weighted scoring system.
+-   **Status:** The core hybrid model, based on user behavior and metadata, is complete. The next evolution will involve true machine learning models.
 -   **Implementation Steps:**
-    -   [ ] **(Low Weight) Content-Based:** Recommend songs from the same artist or genre.
-    -   [ ] **(Low Weight) Popularity-Based:** Include tracks from the `weekly_trending_tracks` table.
-    -   [ ] **(Medium Weight) Playlist-Based:** Use the `song_similarity_by_playlist` table to find songs that are often playlisted together.
-    -   [ ] **(Medium Weight) Social-Based:** Recommend songs liked by users that the current user follows, using the `graph_user_follows` data.
-    -   [ ] **(High Weight) Collaborative Filtering:** Implement the existing "users who liked this also liked..." model, but run it on the full historical dataset.
-    -   [ ] **(High Weight) Audio Feature Similarity:** Enrich `dim_songs` with audio features (e.g., tempo, danceability). Recommend songs with a similar "vibe" by calculating vector similarity.
+    -   [x] **(Low Weight) Popularity-Based:** Include tracks from the `weekly_trending_tracks` table.
+    -   [x] **(Medium Weight) Playlist-Based:** Use the `song_similarity_by_playlist` table to find songs that are often playlisted together.
+    -   [x] **(Medium Weight) Social-Based:** Recommend songs liked by users that the current user follows, using the `graph_user_follows` data.
+    -   [x] **(High Weight) Collaborative Filtering:** Implement the existing "users who liked this also liked..." model, but run it on the full historical dataset.
 
 ---
 
@@ -72,3 +71,28 @@ Improve the operational and analytical capabilities of the platform.
 -   **Implementation Steps:**
     -   [ ] **Schema Management:** Integrate a Schema Registry (like Confluent's) to enforce schemas for Kafka topics, preventing data corruption at the source.
     -   [ ] **Data Quality Checks:** Use a framework like Great Expectations within Airflow DAGs to run validation tests as data moves from Bronze to Silver layers (e.g., "user_id must not be null").
+
+---
+
+## Phase 4: Advanced Machine Learning & AI Integration
+
+Introduce more sophisticated, ML-driven recommendation models and explore AI-powered user experiences.
+
+### 4.1. Advanced Recommendation Models
+-   **Complexity:** High
+-   **Description:** Move beyond statistical models to implement deep learning and content-based filtering techniques for more nuanced recommendations.
+-   **Implementation Steps:**
+    -   **Content-Based Filtering (ML.NET):** Implement a model that recommends songs based on shared attributes like artist and genre. This is a good candidate for an initial ML.NET integration directly within the C# service.
+    -   **Audio Feature Similarity (PyTorch):**
+        -   Enrich the `dim_songs` table with audio features (e.g., tempo, danceability, energy) extracted from audio files (or a mock source).
+        -   Use a PyTorch model to learn song embeddings from these features.
+        -   Implement a vector similarity search (e.g., using Faiss) to find songs with a similar "vibe".
+    -   **Sequence-Aware Recommendations (PyTorch):** Treat a user's listening history as a sequence. Use a recurrent neural network (RNN) or Transformer model to predict the next song a user is likely to listen to, capturing temporal patterns in their behavior.
+
+### 4.2. Generative AI Features
+-   **Complexity:** High
+-   **Description:** Leverage Large Language Models (LLMs) to create more engaging and interactive user features.
+-   **Use Cases:**
+    -   **AI-Powered Playlist Curation:** Automatically generate creative titles and descriptions for user playlists based on the musical characteristics and mood of the included tracks (e.g., "Focus Flow Instrumentals," "90s Rock Workout").
+    -   **Conversational Recommendation:** Develop a chatbot interface allowing users to request music in natural language (e.g., "Find me some chill electronic music for studying," or "I want something like The Killers, but more recent").
+    -   **Dynamic Recommendation Explanations:** For each recommended track, generate a human-readable explanation for *why* it was chosen (e.g., "Because you listen to a lot of Daft Punk, you might like this track which has a similar tempo and is popular with other electronic music fans.").

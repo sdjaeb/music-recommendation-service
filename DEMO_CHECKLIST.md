@@ -89,18 +89,62 @@ This document provides a step-by-step checklist for demonstrating the core featu
     -   **Demo Note:** *"Next, we'll compute another critical analytical table for our recommendation engine. This job finds pairs of songs that are frequently added to the same playlists by users, which is a powerful signal for 'what to play next'."*
     -   **Instructions:** In the Airflow UI, unpause and trigger the `silver_song_similarity_processing` DAG.
 
+-   [ ] **Step 1c: Run the Collaborative Filtering DAG.**
+    -   **Action:** Trigger the `silver_collaborative_filtering_processing` DAG.
+    -   **Demo Note:** *"Finally, we'll compute our most powerful signal: collaborative filtering. This job analyzes the entire user listening history to find which songs are liked by the same groups of people, creating an item-item similarity score."*
+    -   **Instructions:** In the Airflow UI, unpause and trigger the `silver_collaborative_filtering_processing` DAG.
+
 -   [ ] **Step 2: Verify the Silver Layer Results.**
     -   **Action:** Confirm the new aggregated table has been created in the Silver layer.
     -   **Verification Points:**
-        -   **Airflow:** "Both Silver Layer DAG runs, `silver_layer_processing` and `silver_song_similarity_processing`, are successful."
-        -   **MinIO Silver Layer:** "In the `data` bucket, we now have a `silver/` directory. Inside, we can see both of our new analytical tables:"
+        -   **Airflow:** "All three Silver Layer DAG runs, `silver_layer_processing`, `silver_song_similarity_processing`, and `silver_collaborative_filtering_processing`, are successful."
+        -   **MinIO Silver Layer:** "In the `data` bucket, we now have a `silver/` directory. Inside, we can see all of our new analytical tables:"
             -   **`weekly_trending_tracks`:** "This table contains the aggregated weekly play counts."
             -   **`song_similarity_by_playlist`:** "And this one contains the co-occurrence scores for song pairs."
+            -   **`song_collaborative_filtering`:** "This new table contains our item-item collaborative filtering scores."
         -   **Demo Note:** *"These Silver tables are cleaned, aggregated, and ready for direct use by our analytics dashboards and the recommendation model. They represent a single source of truth for these specific business concepts."*
 
 ---
 
-## Part 5: Next Steps (Roadmap Preview)
+## Part 5: Using the Recommendation Service
+
+*"With our analytical tables in the Silver layer, our .NET recommendation service is now live. Let's query it for a user we saw on our new dashboard."*
+
+-   [ ] **Step 1: Identify an Active User.**
+    -   **Action:** For the demo, we'll use a known active user ID.
+    -   **Demo Note:** *"To get a good recommendation, we need a user who is active and has 'liked' songs. We'll use a pre-identified active user for this part of the demo, for example, user `123`."*
+
+-   [ ] **Step 2: Call the Recommendation Endpoint.**
+    -   **Action:** Use `curl` or a web browser to make a GET request to the service.
+    -   **Demo Note:** *"Now we can see our hybrid model in action. We'll call each of our model endpoints individually to see their results, and then call the main endpoint to see how they're combined."*
+    -   **Command (Trending):** `curl http://localhost:8088/recommendations/trending`
+    -   **Verification (Trending):** "First, the simplest model: global popularity. These are the top trending tracks across all users."
+    -   **Command (Playlist Similarity):** `curl http://localhost:8088/recommendations/similar/123`
+    -   **Verification (Playlist Similarity):** "Next, a personalized model based on playlist co-occurrence. These are songs that frequently appear in the same playlists as songs user 123 has liked."
+    -   **Command (Collaborative Filtering):** `curl http://localhost:8088/recommendations/collaborative/123`
+    -   **Verification (Collaborative Filtering):** "Now for our most powerful model: collaborative filtering. These are songs that users similar to user 123 have also liked. This is a very strong signal."
+    -   **Command (Hybrid):** `curl http://localhost:8088/recommendations/123`
+    -   **Verification (Hybrid):** "Finally, the main hybrid endpoint. This combines all the previous signals using different weights. The result is a highly relevant, personalized list of recommendations. This demonstrates the power of our end-to-end pipeline, from raw data to sophisticated, model-driven insights."
+    - **Example Success Output:**
+        ```json
+        [54321, 98765, 12345, 67890, 11223]
+        ```
+    -   **Verification (Not Found):** "If we try a user with no history, like `99999`, we get a `404 Not Found`, which is the correct behavior."
+    -   **Command:** `curl -i http://localhost:8088/recommendations/99999`
+
+-   [ ] **Step 3: Verify the Kafka Event.**
+    -   **Action:** Check that a `music_recommendations` event was produced to Kafka.
+    -   **Demo Note:** *"A key feature of our architecture is that every successful recommendation also generates an event. This allows other downstream systems to react, for example, by sending a push notification to the user."*
+    -   **Command (in a separate terminal):** `docker-compose exec kcat kcat -b kafka:29092 -t music_recommendations -C -o end -e`
+    -   **Verification:** "After we called the endpoint for user 123, we can see the corresponding event was published to Kafka, containing the user ID and the tracks that were recommended. This confirms the end-to-end flow is working."
+    -   **Example Kafka Message:**
+        ```json
+        {"requestedUserId":123,"recommendations":[54321,98765,12345,67890,11223],"timestamp":"..."}
+        ```
+
+---
+
+## Part 6: Next Steps (Roadmap Preview)
 
 -   [ ] **Phase 2: Silver Layer & Hybrid Recommendations.** "Our next step is to build on this bronze data. We'll continue creating cleaned, aggregated 'Silver' tables—like song similarity—which are enriched and ready for business analysis. These tables will directly feed a much more sophisticated recommendation model in our .NET service."
 -   [ ] **Phase 3: Analytics & Maturity.** "Finally, we'll add a Jupyter notebook for ad-hoc data science and build out analytical dashboards in Grafana to monitor business KPIs, not just system health."

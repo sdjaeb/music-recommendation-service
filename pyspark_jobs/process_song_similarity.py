@@ -1,7 +1,7 @@
 # pyspark_jobs/process_song_similarity.py
 import argparse
-from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count, lit
+from spark_utils import get_spark_session
 
 def process_song_similarity(spark, data_bucket):
     """
@@ -52,12 +52,6 @@ if __name__ == "__main__":
     parser.add_argument("--data-bucket", type=str, required=True, help="Name of the MinIO bucket containing bronze and silver data.")
     args = parser.parse_args()
 
-    spark = (
-        SparkSession.builder.appName("SongSimilarityProcessing")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .getOrCreate()
-    )
-
+    spark = get_spark_session("SongSimilarityProcessing")
     process_song_similarity(spark, data_bucket=args.data_bucket)
     spark.stop()

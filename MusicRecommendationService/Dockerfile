@@ -8,6 +8,7 @@ RUN dotnet publish "MusicRecommendationService.csproj" -c Release -o /app/publis
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
+RUN apt-get update && apt-get install -y curl --no-install-recommends
 WORKDIR /app
 COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://+:80
