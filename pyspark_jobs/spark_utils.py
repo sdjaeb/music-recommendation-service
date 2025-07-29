@@ -29,3 +29,29 @@ def get_spark_session(app_name="SparkApplication"):
         .getOrCreate()
     )
     return spark
+
+def read_delta_table(spark: SparkSession, path: str, base_path: str = "s3a://data"):
+    """
+    Reads a Delta table from the specified path within the base path.
+    Example: read_delta_table(spark, "bronze/my_table")
+    """
+    full_path = f"{base_path}/{path}"
+    print(f"Reading Delta table from: {full_path}")
+    return spark.read.format("delta").load(full_path)
+
+def write_to_delta(df, path: str, mode: str = "overwrite", description: str = None, base_path: str = "s3a://data"):
+    """
+    Writes a DataFrame to a Delta table at the specified path.
+    Example: write_to_delta(my_df, "silver/my_table")
+    """
+    full_path = f"{base_path}/{path}"
+    print(f"Writing DataFrame to Delta table: {full_path} with mode '{mode}'")
+    writer = df.write.format("delta").mode(mode)
+
+    if description:
+        writer = writer.option("description", description)
+
+    if mode == "overwrite":
+        writer = writer.option("overwriteSchema", "true")
+
+    writer.save(full_path)

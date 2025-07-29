@@ -89,13 +89,19 @@ This document provides a step-by-step checklist for demonstrating the core featu
     -   **Demo Note:** *"Next, we'll compute another critical analytical table for our recommendation engine. This job finds pairs of songs that are frequently added to the same playlists by users, which is a powerful signal for 'what to play next'."*
     -   **Instructions:** In the Airflow UI, unpause and trigger the `silver_song_similarity_processing` DAG.
 
+-   [ ] **Step 1c: Run the Collaborative Filtering DAG.**
+    -   **Action:** Trigger the `silver_collaborative_filtering_processing` DAG.
+    -   **Demo Note:** *"Finally, we'll compute our most powerful signal: collaborative filtering. This job analyzes the entire user listening history to find which songs are liked by the same groups of people, creating an item-item similarity score."*
+    -   **Instructions:** In the Airflow UI, unpause and trigger the `silver_collaborative_filtering_processing` DAG.
+
 -   [ ] **Step 2: Verify the Silver Layer Results.**
     -   **Action:** Confirm the new aggregated table has been created in the Silver layer.
     -   **Verification Points:**
-        -   **Airflow:** "Both Silver Layer DAG runs, `silver_layer_processing` and `silver_song_similarity_processing`, are successful."
-        -   **MinIO Silver Layer:** "In the `data` bucket, we now have a `silver/` directory. Inside, we can see both of our new analytical tables:"
+        -   **Airflow:** "All three Silver Layer DAG runs, `silver_layer_processing`, `silver_song_similarity_processing`, and `silver_collaborative_filtering_processing`, are successful."
+        -   **MinIO Silver Layer:** "In the `data` bucket, we now have a `silver/` directory. Inside, we can see all of our new analytical tables:"
             -   **`weekly_trending_tracks`:** "This table contains the aggregated weekly play counts."
             -   **`song_similarity_by_playlist`:** "And this one contains the co-occurrence scores for song pairs."
+            -   **`song_collaborative_filtering`:** "This new table contains our item-item collaborative filtering scores."
         -   **Demo Note:** *"These Silver tables are cleaned, aggregated, and ready for direct use by our analytics dashboards and the recommendation model. They represent a single source of truth for these specific business concepts."*
 
 ---
@@ -110,13 +116,15 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 -   [ ] **Step 2: Call the Recommendation Endpoint.**
     -   **Action:** Use `curl` or a web browser to make a GET request to the service.
-    -   **Command:** `curl http://localhost:8088/recommendations/123`
-    -   **Verification (Success):** "We get back a `200 OK` with a JSON array of track IDs. These are the personalized recommendations for user 123, calculated by our hybrid model, which combines multiple strategies."
-    -   **Example Success Output:**
-    - **Command (Trending Only):** `curl http://localhost:8088/recommendations/trending`
-    - **Verification (Success):** "To see the individual components of our hybrid model, we can query for just the trending tracks. This hits our `weekly_trending_tracks` Silver table and shows the popularity-based component of our model."
-    - **Command (Similarity Only):** `curl http://localhost:8088/recommendations/similar/123`
-    - **Verification (Success):** "We can also call a more specific endpoint that *only* uses the song similarity model. This is useful for debugging and understanding the contribution of each model component. The results will likely be different from the hybrid model."
+    -   **Demo Note:** *"Now we can see our hybrid model in action. We'll call each of our model endpoints individually to see their results, and then call the main endpoint to see how they're combined."*
+    -   **Command (Trending):** `curl http://localhost:8088/recommendations/trending`
+    -   **Verification (Trending):** "First, the simplest model: global popularity. These are the top trending tracks across all users."
+    -   **Command (Playlist Similarity):** `curl http://localhost:8088/recommendations/similar/123`
+    -   **Verification (Playlist Similarity):** "Next, a personalized model based on playlist co-occurrence. These are songs that frequently appear in the same playlists as songs user 123 has liked."
+    -   **Command (Collaborative Filtering):** `curl http://localhost:8088/recommendations/collaborative/123`
+    -   **Verification (Collaborative Filtering):** "Now for our most powerful model: collaborative filtering. These are songs that users similar to user 123 have also liked. This is a very strong signal."
+    -   **Command (Hybrid):** `curl http://localhost:8088/recommendations/123`
+    -   **Verification (Hybrid):** "Finally, the main hybrid endpoint. This combines all the previous signals using different weights. The result is a highly relevant, personalized list of recommendations. This demonstrates the power of our end-to-end pipeline, from raw data to sophisticated, model-driven insights."
     - **Example Success Output:**
         ```json
         [54321, 98765, 12345, 67890, 11223]
