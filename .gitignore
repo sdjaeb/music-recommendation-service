@@ -22,3 +22,6 @@ secrets/
 generated_data/
 logs/
 __pycache__
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
