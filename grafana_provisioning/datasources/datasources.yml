@@ -9,8 +9,3 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
-  - name: MusicRecommendationServiceJson
-    type: marcusolsson-json-datasource
-    access: proxy
-    url: http://music-recommendation-service:80
-    uid: NEW_MUSIC_SERVICE_UID
