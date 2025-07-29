@@ -25,6 +25,3 @@ __pycache__
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
-
-# Ignore generated validation results and data docs
-uncommitted/
