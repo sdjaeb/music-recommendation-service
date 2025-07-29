@@ -108,7 +108,13 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ## Part 4.5: Data Quality Gates
 
-*"A reliable platform needs to protect itself from bad data. We've integrated Great Expectations to act as a 'quality gate' between our Bronze and Silver layers. Let's look at the `silver_layer_processing` DAG run
+*"A reliable platform needs to protect itself from bad data. We've integrated Great Expectations to act as a 'quality gate' between our Bronze and Silver layers. Let's look at the `silver_collaborative_filtering_processing` DAG run."*
+
+-   [ ] **Step 1: Inspect the Airflow Task Logs.**
+    -   **Action:** In the Airflow UI, navigate to the latest successful run of the `silver_collaborative_filtering_processing` DAG and view the logs for the `run_spark_job` task.
+    -   **Verification:** "Right after reading the bronze data, you can see new log output: 'Running data quality checks...' followed by 'Validation successful...'. This confirms our rules were executed. If the source data had been invalid—for example, containing null `user_id`s—this task would have failed, preventing corrupted data from reaching our Silver layer."
+
+---
 
 ## Part 5: Ad-Hoc Data Exploration with Jupyter
 

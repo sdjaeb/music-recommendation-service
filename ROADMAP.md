@@ -70,7 +70,7 @@ Improve the operational and analytical capabilities of the platform.
 -   **Description:** Add enterprise-grade features to ensure data quality and pipeline reliability.
 -   **Implementation Steps:**
     -   [ ] **Schema Management:** Integrate a Schema Registry (like Confluent's) to enforce schemas for Kafka topics, preventing data corruption at the source.
-    -   [ ] **Data Quality Checks:** Use a framework like Great Expectations within Airflow DAGs to run validation tests as data moves from Bronze to Silver layers (e.g., "user_id must not be null").
+    -   [x] **Data Quality Checks:** Use a framework like Great Expectations within Airflow DAGs to run validation tests as data moves from Bronze to Silver layers (e.g., "user_id must not be null").
 
 ---
 
