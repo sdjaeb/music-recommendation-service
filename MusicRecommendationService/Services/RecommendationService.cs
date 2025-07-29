@@ -157,4 +157,25 @@ public class RecommendationService : IRecommendationService
             .Select(kvp => kvp.Key)
             .Take(count);
     }
+
+    public async Task<IEnumerable<long>> GetTrendingRecommendationsAsync(int count = 10)
+    {
+        _logger.LogInformation("Generating trending recommendations");
+
+        // 1. Fetch trending tracks data from the silver layer
+        var trendingTracks = await _minioService.ReadLatestDeltaTableAsync<TrendingTrack>("data", "silver/weekly_trending_tracks");
+
+        if (!trendingTracks.Any())
+        {
+            _logger.LogWarning("No trending tracks found in the silver layer.");
+            return Enumerable.Empty<long>();
+        }
+
+        // 2. The data should already be aggregated by the Spark job.
+        // We just need to order and take the top N.
+        return trendingTracks
+            .OrderByDescending(t => t.play_count)
+            .Select(t => t.track_id)
+            .Take(count);
+    }
 }

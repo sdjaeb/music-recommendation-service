@@ -111,8 +111,10 @@ This document provides a step-by-step checklist for demonstrating the core featu
 -   [ ] **Step 2: Call the Recommendation Endpoint.**
     -   **Action:** Use `curl` or a web browser to make a GET request to the service.
     -   **Command:** `curl http://localhost:8088/recommendations/123`
-    -   **Verification (Success):** "We get back a `200 OK` with a JSON array of track IDs. These are the personalized recommendations for user 123, calculated by our hybrid model."
+    -   **Verification (Success):** "We get back a `200 OK` with a JSON array of track IDs. These are the personalized recommendations for user 123, calculated by our hybrid model, which combines multiple strategies."
     -   **Example Success Output:**
+    - **Command (Trending Only):** `curl http://localhost:8088/recommendations/trending`
+    - **Verification (Success):** "To see the individual components of our hybrid model, we can query for just the trending tracks. This hits our `weekly_trending_tracks` Silver table and shows the popularity-based component of our model."
     - **Command (Similarity Only):** `curl http://localhost:8088/recommendations/similar/123`
     - **Verification (Success):** "We can also call a more specific endpoint that *only* uses the song similarity model. This is useful for debugging and understanding the contribution of each model component. The results will likely be different from the hybrid model."
     - **Example Success Output:**

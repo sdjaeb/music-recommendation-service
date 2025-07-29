@@ -81,6 +81,18 @@ app.MapGet("/recommendations/similar/{userId:int}", async (int userId, IRecommen
     return Results.Ok(recommendations);
 });
 
+app.MapGet("/recommendations/trending", async (IRecommendationService recommendationService, ILogger<Program> logger) => {
+  // Assuming a new method in the service to get top N trending tracks
+  var recommendations = (await recommendationService.GetTrendingRecommendationsAsync(10)).ToList();
+  
+  if (!recommendations.Any())
+  {
+      return Results.NotFound(new { message = "No trending tracks found." });
+  }
+
+  return Results.Ok(recommendations);
+});
+
 // New endpoint to ingest user listening events
 app.MapPost("/ingest/listening-event", (object listeningEvent, IEventProducer eventProducer, ILogger<Program> logger) => {
     try
