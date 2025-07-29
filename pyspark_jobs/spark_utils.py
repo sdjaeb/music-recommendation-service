@@ -17,14 +17,23 @@ def get_spark_session(app_name="SparkApplication"):
     with open(secret_key_file, 'r') as f:
         minio_secret_key = f.read().strip()
 
+    builder = SparkSession.builder.appName(app_name)
+
+    # If running in a container with SPARK_MASTER set, connect to it.
+    # Otherwise, it will run in local mode (e.g., for local testing).
+    spark_master_url = os.getenv("SPARK_MASTER")
+    if spark_master_url:
+        builder = builder.master(spark_master_url)
+
     spark = (
-        SparkSession.builder.appName(app_name)
+        builder
         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
         .config("spark.hadoop.fs.s3a.access.key", minio_access_key)
         .config("spark.hadoop.fs.s3a.secret.key", minio_secret_key)
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .getOrCreate()
     )
