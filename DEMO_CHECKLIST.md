@@ -176,13 +176,9 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 -   [ ] **Step 3: Verify the Kafka Event.**
     -   **Action:** Check that a `music_recommendations` event was produced to Kafka.
-    -   **Demo Note:** *"A key feature of our architecture is that every successful recommendation also generates an event. This allows other downstream systems to react, for example, by sending a push notification to the user."*
+    -   **Demo Note:** *"A key feature of our architecture is that every successful recommendation also generates an event. This allows other downstream systems to react. Crucially, this event is now produced in a binary Avro format, enforced by our Schema Registry. This guarantees data quality at the source."*
     -   **Command (in a separate terminal):** `docker-compose exec kcat kcat -b kafka:29092 -t music_recommendations -C -o end -e`
-    -   **Verification:** "After we called the endpoint for user 123, we can see the corresponding event was published to Kafka, containing the user ID and the tracks that were recommended. This confirms the end-to-end flow is working."
-    -   **Example Kafka Message:**
-        ```json
-        {"requestedUserId":123,"recommendations":[54321,98765,12345,67890,11223],"timestamp":"..."}
-        ```
+    -   **Verification:** "After we called the endpoint for user 123, we can see the corresponding event was published to Kafka. Notice that the output from `kcat` is no longer human-readable JSON. It's binary Avro data. This is exactly what we want. It means our producer is correctly serializing the data according to the schema, and any consumer that doesn't adhere to this schema will fail. This is how we prevent data corruption before it even starts."
 
 ---
 
