@@ -291,6 +291,48 @@ services:
         limits:
           cpus: '0.5'
           memory: '256m'
+
+  #################################
+  # Analytics & Exploration
+  #################################
+  jupyter-notebook:
+    image: jupyter/pyspark-notebook:latest
+    container_name: jupyter-notebook
+    restart: always
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./pyspark_jobs:/home/jovyan/work/pyspark_jobs
+      - ./generated_data:/home/jovyan/work/data/generated
+      # A place to store notebooks that will persist
+      - ./notebooks:/home/jovyan/work/notebooks
+    # Running as the host user avoids permission issues with the mounted volumes.
+    # You may need to create a .env file with: JUPYTER_UID=$(id -u)
+    user: "${JUPYTER_UID:-1000}"
+    command: >
+      bash -c "start-notebook.sh --JupyterApp.token=''"
+      # The --JupyterApp.token='' argument disables token authentication for easier demo access.
+      # Do not use this in a production environment.
+    environment:
+      # Connect to the Spark cluster
+      - SPARK_MASTER=spark://spark-master:7077
+      - JUPYTER_ENABLE_LAB=yes
+      # Pass MinIO credentials for PySpark scripts to use
+      - MINIO_ACCESS_KEY_FILE=/run/secrets/minio_user
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_pass
+    secrets:
+      - minio_user
+      - minio_pass
+    networks:
+      - data_platform_network
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '2g'
   # FastAPI Ingestor: A Python-based API that receives data from external sources
 
   ################
@@ -308,7 +350,11 @@ services:
     ports:
       - "8081:8080" # Spark Master UI (on 8081 to avoid conflict with Airflow)
       - "7077:7077" # Spark Master internal communication port
-      - "10000:10000" # Spark Thrift Server for dbt
+      - "10000:10000" # Spark Thrift Server for Grafana/BI tools
+    command: >
+      bash -c "/opt/bitnami/spark/sbin/start-master.sh && 
+               /opt/bitnami/spark/sbin/start-thriftserver.sh --hiveconf hive.server2.thrift.port=10000 && 
+               tail -f /dev/null"
     environment:
       SPARK_MODE: master
       SPARK_MASTER_HOST: spark-master # Advertise with the service name
@@ -758,12 +804,15 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/dashboards:/var/lib/grafana/dashboards # This is for actual dashboard JSON files
-      - ./grafana_provisioning:/etc/grafana/provisioning:ro # New mount for provisioning files
+      - ./grafana_provisioning:/etc/grafana/provisioning
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
+      # Install the SparkSQL plugin in addition to the others
+      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel,doitintl-spark-datasource"
     depends_on:
+      spark-master:
+        condition: service_healthy
       prometheus:
         condition: service_started
       cadvisor:
