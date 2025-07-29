@@ -84,6 +84,7 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./pyspark_jobs:/opt/airflow/pyspark_jobs # Mount spark jobs for Airflow's SparkSubmitOperator
     - ./generated_data:/opt/airflow/data/generated # Mount generated data for upload
+    - ./great_expectations:/opt/airflow/great_expectations # Mount GE project for data quality checks
   user: "${AIRFLOW_UID:-50000}:0" # Set user to prevent permission issues
   secrets:
     - minio_user

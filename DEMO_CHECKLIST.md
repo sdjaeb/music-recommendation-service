@@ -106,6 +106,10 @@ This document provides a step-by-step checklist for demonstrating the core featu
 
 ---
 
+## Part 4.5: Data Quality Gates
+
+*"A reliable platform needs to protect itself from bad data. We've integrated Great Expectations to act as a 'quality gate' between our Bronze and Silver layers. Let's look at the `silver_layer_processing` DAG run
+
 ## Part 5: Ad-Hoc Data Exploration with Jupyter
 
 *"Now that we have processed data in our Silver layer, we can use a Jupyter Notebook for ad-hoc analysis, data science experimentation, or debugging our data pipelines. This demonstrates the platform's flexibility for interactive workloads."*
