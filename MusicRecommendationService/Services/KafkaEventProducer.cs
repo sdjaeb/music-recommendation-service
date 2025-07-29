@@ -1,45 +1,74 @@
 using Confluent.Kafka;
+using Confluent.SchemaRegistry;
+using Confluent.SchemaRegistry.Serdes;
+using MusicRecommendationService.Models;
 
 namespace MusicRecommendationService.Services;
 
 public class KafkaEventProducer : IEventProducer
 {
-    private readonly IProducer<Null, string> _producer;
+    private readonly IProducer<Null, string> _jsonProducer;
+    private readonly IProducer<Null, RecommendationEvent> _avroProducer;
     private readonly ILogger<KafkaEventProducer> _logger;
 
     public KafkaEventProducer(IConfiguration configuration, ILogger<KafkaEventProducer> logger)
     {
         _logger = logger;
-        var config = new ProducerConfig
+        var bootstrapServers = configuration["KAFKA_BROKER"] ?? "localhost:9092";
+
+        // --- Configure JSON Producer (for existing string-based events) ---
+        var jsonProducerConfig = new ProducerConfig
         {
-            BootstrapServers = configuration["KAFKA_BROKER"] ?? "localhost:9092",
-            Acks = Acks.Leader, // Only wait for the leader to acknowledge
-            MessageTimeoutMs = 5000 // Set a 5-second timeout for message production
+            BootstrapServers = bootstrapServers
         };
-        _producer = new ProducerBuilder<Null, string>(config).Build();
-        _logger.LogInformation("Kafka producer initialized for broker: {BootstrapServers}", config.BootstrapServers);
+        _jsonProducer = new ProducerBuilder<Null, string>(jsonProducerConfig).Build();
+
+        // --- Configure Avro Producer (for new schema-based events) ---
+        var schemaRegistryConfig = new SchemaRegistryConfig
+        {
+            Url = configuration["SCHEMA_REGISTRY_URL"] ?? "localhost:8085"
+        };
+        var avroProducerConfig = new ProducerConfig { BootstrapServers = bootstrapServers };
+
+        var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig);
+        _avroProducer = new ProducerBuilder<Null, RecommendationEvent>(avroProducerConfig)
+            .SetValueSerializer(new AvroSerializer<RecommendationEvent>(schemaRegistry))
+            .Build();
+
+        _logger.LogInformation("Kafka producers initialized for broker: {BootstrapServers} and Schema Registry: {SchemaRegistryUrl}", 
+            bootstrapServers, schemaRegistryConfig.Url);
     }
 
     public void Produce(string topic, string message)
     {
-        // Use the non-blocking Produce method with a delivery handler (callback).
-        // This fires the message and returns immediately. The result is handled in the background.
-        _producer.Produce(topic, new Message<Null, string> { Value = message }, (deliveryReport) =>
+        _jsonProducer.Produce(topic, new Message<Null, string> { Value = message }, deliveryReport =>
         {
             if (deliveryReport.Error.Code != ErrorCode.NoError)
             {
-                _logger.LogError("Failed to deliver message: {Reason}", deliveryReport.Error.Reason);
-            }
-            else
-            {
-                _logger.LogInformation("Produced message to {Topic} partition {Partition} at offset {Offset}",
-                    deliveryReport.Topic, deliveryReport.Partition, deliveryReport.Offset);
+                _logger.LogError("Failed to deliver JSON message to {Topic}: {Reason}", topic, deliveryReport.Error.Reason);
             }
         });
     }
 
+    public async Task ProduceAvroAsync(string topic, RecommendationEvent message)
+    {
+        try
+        {
+            var deliveryResult = await _avroProducer.ProduceAsync(topic, new Message<Null, RecommendationEvent> { Value = message });
+            _logger.LogInformation("Produced Avro message to {Topic} partition {Partition} at offset {Offset}",
+                deliveryResult.Topic, deliveryResult.Partition, deliveryResult.Offset);
+        }
+        catch (ProduceException<Null, RecommendationEvent> e)
+        {
+            _logger.LogError(e, "Failed to deliver Avro message to {Topic}: {Reason}", topic, e.Error.Reason);
+        }
+    }
+
     public void Dispose()
     {
-        _producer.Dispose();
+        _jsonProducer.Flush(TimeSpan.FromSeconds(10));
+        _jsonProducer.Dispose();
+        _avroProducer.Flush(TimeSpan.FromSeconds(10));
+        _avroProducer.Dispose();
     }
 }
