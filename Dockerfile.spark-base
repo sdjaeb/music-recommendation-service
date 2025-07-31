@@ -1,4 +1,26 @@
+# Dockerfile for Spark base image
+# This image is used for the Spark master, worker, and history server.
+# It extends the official Bitnami Spark image to include Python dependencies
+# required by our PySpark jobs.
+
+# Use the Bitnami Spark image version that matches the one used in the project.
 FROM bitnami/spark:3.5.1
+
+# Switch to the root user to install system-level packages and Python libraries.
 USER root
-RUN apt-get update && apt-get install -y netcat-traditional && rm -rf /var/lib/apt/lists/*
+
+# Install system-level dependencies. netcat is useful for healthchecks.
+RUN apt-get update -qq && \
+    apt-get install -yqq --no-install-recommends netcat-openbsd && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install the required Python libraries directly into the Bitnami Python environment
+# that Spark is configured to use via the PYSPARK_PYTHON variable.
+# We also pin pyspark and delta-spark versions to match the cluster for consistency.
+RUN /opt/bitnami/python/bin/python3 -m pip install --no-cache-dir --upgrade pip && \
+    /opt/bitnami/python/bin/python3 -m pip install --no-cache-dir \
+    pyspark==3.5.1 \
+    delta-spark==3.2.0
+
+# Switch back to the default non-root 'spark' user for security.
 USER 1001

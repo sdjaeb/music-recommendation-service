@@ -46,63 +46,59 @@ app.UseHttpMetrics();
 
 app.MapGet("/", () => "Hello from Music Recommendation Service!");
 
-app.MapGet("/recommendations/{userId:int}", async (int userId, IRecommendationService recommendationService, IEventProducer eventProducer, ILogger<Program> logger) => {
-  var recommendations = (await recommendationService.GetRecommendationsAsync(userId, 5)).ToList();
-  
-  if (!recommendations.Any())
-  {
-      return Results.NotFound(new { message = $"No recommendations found for user {userId}." });
-  }
+// Helper to reduce duplication for recommendation endpoints
+async Task<IResult> HandleRecommendationRequest(
+    long userId,
+    string notFoundMessage,
+    Func<Task<IEnumerable<long>>> recommendationFunc,
+    IEventProducer eventProducer,
+    ILogger<Program> logger)
+{
+    var recommendations = (await recommendationFunc()).ToList();
 
-  // Create an event payload and produce it to Kafka
-  try
-  {
-      var recommendationEvent = new {
-          requestedUserId = userId,
-          recommendations = recommendations,
-          timestamp = DateTime.UtcNow
-      };
-      eventProducer.Produce("music_recommendations", JsonSerializer.Serialize(recommendationEvent));
-  }
-  catch (Exception ex)
-  {
-      logger.LogError(ex, "Failed to produce recommendation event to Kafka for user {UserId}", userId);
-  }
-    return Results.Ok(recommendations);
-});
+    if (!recommendations.Any())
+    {
+        return Results.NotFound(new { message = notFoundMessage });
+    }
 
-app.MapGet("/recommendations/similar/{userId:int}", async (int userId, IRecommendationService recommendationService, ILogger<Program> logger) => {
-  var recommendations = (await recommendationService.GetSimilarRecommendationsAsync(userId, 5)).ToList();
-  
-  if (!recommendations.Any())
-  {
-      return Results.NotFound(new { message = $"No similar song recommendations found for user {userId}." });
-  }
-    return Results.Ok(recommendations);
-});
-
-app.MapGet("/recommendations/collaborative/{userId:int}", async (int userId, IRecommendationService recommendationService, ILogger<Program> logger) => {
-  var recommendations = (await recommendationService.GetCollaborativeRecommendationsAsync(userId, 5)).ToList();
-  
-  if (!recommendations.Any())
-  {
-      return Results.NotFound(new { message = $"No collaborative filtering recommendations found for user {userId}." });
-  }
+    try
+    {
+        var recommendationEvent = new RecommendationEvent
+        {
+            requestedUserId = userId,
+            recommendations = recommendations,
+            timestamp = DateTime.UtcNow.ToString("o") // ISO 8601 format
+        };
+        await eventProducer.ProduceAvroAsync("music_recommendations", recommendationEvent);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to produce recommendation event to Kafka for user {UserId}", userId);
+    }
 
     return Results.Ok(recommendations);
-});
+}
 
-app.MapGet("/recommendations/trending", async (IRecommendationService recommendationService, ILogger<Program> logger) => {
-  // Assuming a new method in the service to get top N trending tracks
-  var recommendations = (await recommendationService.GetTrendingRecommendationsAsync(10)).ToList();
-  
-  if (!recommendations.Any())
-  {
-      return Results.NotFound(new { message = "No trending tracks found." });
-  }
+app.MapGet("/recommendations/{userId:int}", 
+    (int userId, IRecommendationService recommendationService, IEventProducer eventProducer, ILogger<Program> logger) => 
+        HandleRecommendationRequest(userId, $"No recommendations found for user {userId}.", 
+            () => recommendationService.GetRecommendationsAsync(userId, 5), eventProducer, logger));
 
-  return Results.Ok(recommendations);
-});
+app.MapGet("/recommendations/similar/{userId:int}", 
+    (int userId, IRecommendationService recommendationService, IEventProducer eventProducer, ILogger<Program> logger) => 
+        HandleRecommendationRequest(userId, $"No similar song recommendations found for user {userId}.", 
+            () => recommendationService.GetSimilarRecommendationsAsync(userId, 5), eventProducer, logger));
+
+app.MapGet("/recommendations/collaborative/{userId:int}", 
+    (int userId, IRecommendationService recommendationService, IEventProducer eventProducer, ILogger<Program> logger) => 
+        HandleRecommendationRequest(userId, $"No collaborative filtering recommendations found for user {userId}.", 
+            () => recommendationService.GetCollaborativeRecommendationsAsync(userId, 5), eventProducer, logger));
+
+app.MapGet("/recommendations/trending", 
+    (IRecommendationService recommendationService, IEventProducer eventProducer, ILogger<Program> logger) => 
+        // Use a sentinel userId of 0 for non-personalized recommendations
+        HandleRecommendationRequest(0, "No trending tracks found.", 
+            () => recommendationService.GetTrendingRecommendationsAsync(10), eventProducer, logger));
 
 // New endpoint to ingest user listening events
 app.MapPost("/ingest/listening-event", (object listeningEvent, IEventProducer eventProducer, ILogger<Program> logger) => {

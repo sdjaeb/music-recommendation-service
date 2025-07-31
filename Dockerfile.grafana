@@ -1,0 +1,14 @@
+# Use the latest stable Grafana image for better features and plugin compatibility.
+FROM grafana/grafana:11.1.0
+
+# The base image is Alpine, so we use 'apk' to install dependencies for manual plugin installation.
+USER root
+RUN apk add --no-cache wget unzip
+USER grafana
+
+# Manually install the InfluxData FlightSQL datasource plugin v1.1.1.
+# This is the correct plugin for connecting to a Flight SQL endpoint like the Spark Thrift Server.
+# We are using the direct download link because it is not available in the default Grafana plugin repository.
+RUN wget -O /tmp/flightsql.zip "https://github.com/influxdata/grafana-flightsql-datasource/releases/download/v1.1.1/influxdata-flightsql-datasource-1.1.1.zip" && \
+    unzip -q /tmp/flightsql.zip -d /var/lib/grafana/plugins && \
+    rm /tmp/flightsql.zip

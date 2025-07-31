@@ -85,6 +85,10 @@ with DAG(
         conn_id="spark_default",
         packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
         verbose=True,
+        conf={
+            "spark.pyspark.driver.python": "python3",
+            "spark.pyspark.python": "/usr/local/bin/python3",
+        },
     ).expand(
         application_args=upload_new_files.output.map(lambda s3_path: ["--input-path", s3_path])
     )

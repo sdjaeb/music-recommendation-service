@@ -380,9 +380,15 @@ services:
       - "7077:7077" # Spark Master internal communication port
       - "10000:10000" # Spark Thrift Server for Grafana/BI tools
     command: >
-      bash -c "/opt/bitnami/spark/sbin/start-master.sh && 
-               /opt/bitnami/spark/sbin/start-thriftserver.sh --hiveconf hive.server2.thrift.port=10000 && 
+      bash -c "set -e && /opt/bitnami/spark/sbin/start-master.sh && \
+               /opt/bitnami/spark/sbin/start-thriftserver.sh --hiveconf hive.server2.thrift.port=10000 & \
                tail -f /dev/null"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z spark-master 10000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       SPARK_MODE: master
       SPARK_MASTER_HOST: spark-master # Advertise with the service name
@@ -390,14 +396,10 @@ services:
       SPARK_RPC_ENCRYPTION_ENABLED: "no"
       SPARK_DAEMON_MEMORY: "1g" # Explicitly set daemon memory
       SPARK_EVENT_LOG_DIR: file:///opt/bitnami/spark/events # Correct variable for Bitnami image
-      # Pass secrets as environment variables for PySpark scripts to use
-      # Restore global Spark settings for cluster stability
-      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
-      SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
-      SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
       MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
       MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
     volumes:
+      - ./config/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
       - spark_events:/opt/bitnami/spark/events # Shared volume for job history
       - ./pyspark_jobs:/opt/bitnami/spark/jobs # Mount local PySpark jobs
     secrets:
@@ -405,17 +407,13 @@ services:
       - minio_pass
     networks:
       - data_platform_network
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: '1.5g'
+    user: "1001:0"
 
   # Spark Worker: The node that executes the tasks assigned by the master.
   # You can scale the number of workers to increase processing power.
@@ -437,10 +435,6 @@ services:
       SPARK_RPC_AUTHENTICATION_ENABLED: "no"
       SPARK_RPC_ENCRYPTION_ENABLED: "no"
       SPARK_EVENT_LOG_DIR: file:///opt/bitnami/spark/events # Correct variable for Bitnami image
-      # Restore global Spark settings for cluster stability
-      SPARK_SUBMIT_ARGS: "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4"
-      SPARK_SQL_EXTENSIONS: io.delta.sql.DeltaSparkSessionExtension
-      SPARK_SQL_CATALOG_SPARK_CATALOG: org.apache.spark.sql.delta.catalog.DeltaCatalog
       MINIO_ACCESS_KEY_FILE: /run/secrets/minio_user
       MINIO_SECRET_KEY_FILE: /run/secrets/minio_pass
     volumes:
@@ -455,10 +449,13 @@ services:
     networks:
       - data_platform_network
     healthcheck:
-      test: ["CMD-SHELL", "nc -z spark-master 7077"]
+      test: ["CMD-SHELL", "nc -z spark-worker-1 8081"]
       interval: 30s
       timeout: 5s
       retries: 3
+    command: >
+      bash -c "/opt/bitnami/spark/sbin/start-worker.sh spark://spark-master:7077 && \
+               tail -f /dev/null"
     deploy:
       resources:
         limits:
@@ -486,13 +483,9 @@ services:
       SPARK_HISTORY_OPTS: "-Dspark.history.fs.logDirectory=file:///opt/bitnami/spark/events -Dspark.history.ui.port=18080"
     volumes:
       - spark_events:/opt/bitnami/spark/events
+    user: "1001:0" # Run as spark user
     networks:
       - data_platform_network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: '512m'
 
   #####################
   # Airflow (Celery) (from docker-compose.orchestration.yml)
@@ -559,9 +552,10 @@ services:
       <<: *airflow-common-env
       AIRFLOW__WEBSERVER__RBAC: 'True'
       AIRFLOW__WEBSERVER__AUTHENTICATE: 'True'
-      AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080'
-      AIRFLOW__WEBSERVER__WEB_SERVER_HOST: 'airflow-webserver'
-      AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8080'
+      AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080' # For link generation
+      # In Airflow 3+, webserver host/port are configured under the [api] section
+      AIRFLOW__API__HOST: '0.0.0.0'
+      AIRFLOW__API__PORT: '8080'
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -824,7 +818,10 @@ services:
   # Grafana: Visualization and dashboarding tool.
   # Connects to Prometheus (metrics) and Loki (logs) to create comprehensive dashboards.
   grafana:
-    image: grafana/grafana:10.2.3
+    platform: linux/amd64 # Force amd64 platform to resolve persistent plugin architecture issues.
+    build:
+      context: .
+      dockerfile: Dockerfile.grafana
     container_name: grafana
     restart: always
     ports:
@@ -836,8 +833,6 @@ services:
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      # Install the SparkSQL plugin in addition to the others
-      GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel,doitintl-spark-datasource"
     depends_on:
       spark-master:
         condition: service_healthy
@@ -848,7 +843,8 @@ services:
       music-recommendation-service:
         condition: service_healthy
     networks:
-      - observability_network
+      - observability_network # For connecting to Prometheus, Loki
+      - data_platform_network # For connecting to Spark Thrift Server
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 10s

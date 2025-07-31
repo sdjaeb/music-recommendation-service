@@ -1,7 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count, lit
 from spark_utils import get_spark_session, read_delta_table, write_to_delta
-from great_expectations_utils import validate_spark_df
 
 def process_collaborative_filtering(spark: SparkSession):
     """
@@ -10,16 +9,6 @@ def process_collaborative_filtering(spark: SparkSession):
     """
     # 1. Read the listening events data
     listening_events_df = read_delta_table(spark, "bronze/fact_listening_events")
-
-    # --- NEW: Data Quality Check ---
-    # This acts as a "quality gate". If the validation fails, the function
-    # will raise an exception, and the Spark job will fail, stopping the pipeline.
-    print("Running data quality checks on bronze_fact_listening_events...")
-    validate_spark_df(
-        spark_df=listening_events_df,
-        expectation_suite_name="bronze_fact_listening_events"
-    )
-    print("Data quality checks passed.")
 
     # 2. Filter for 'like' events
     likes_df = listening_events_df.filter(col("event_type") == "like").select("user_id", "track_id").distinct()

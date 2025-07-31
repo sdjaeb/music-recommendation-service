@@ -33,4 +33,8 @@ with DAG(
         packages="org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0",
         verbose=True,
         application_args=["--data-bucket", MINIO_DATA_BUCKET],
+        conf={
+            "spark.pyspark.driver.python": "python3",
+            "spark.pyspark.python": "/usr/local/bin/python3",
+        },
     )
