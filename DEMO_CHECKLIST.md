@@ -22,10 +22,11 @@ This document provides a step-by-step checklist for demonstrating the core featu
     -   **Action:** Do a quick tour of the service UIs to confirm everything is online. This is our command center.
     -   **Verification Points:**
         -   **Airflow (Orchestration):** `http://localhost:8080` - "This is where we manage our data pipelines."
-        -   **Spark Master (Processing):** `http://localhost:8081` - "This shows our Spark cluster is alive and has workers ready for jobs."
-        -   **MinIO (Data Lake Storage):** `http://localhost:9001` - "This is our data lake. We'll log in with `minioadmin`/`minioadmin`."
+        -   **Spark Master UI (Cluster Status):** `http://localhost:8081` - "This shows our Spark cluster is alive and has workers ready for jobs."
+        -   **MinIO Console (Data Lake Storage):** `http://localhost:9001` - "This is our data lake. We'll log in with `minioadmin`/`minioadmin`."
+        -   **Prometheus (Metrics):** `http://localhost:9091` - "This is where we can query all of our platform's raw metrics."
         -   **Grafana (Observability):** `http://localhost:3000` - "Our dashboard for metrics and logs."
-        -   **Spark Application UI (Live Jobs):** `http://localhost:4040` - "While a Spark job is running from Airflow, we can monitor its progress live here."
+        -   **Spark Application UI (Live Jobs):** `http://localhost:4040` - "This UI is only active *while a Spark job is running* from Airflow. We can monitor its progress live here."
         -   **Spark History Server (Job Analysis):** `http://localhost:18080` - "For digging into the details of completed Spark jobs."
 
 ---

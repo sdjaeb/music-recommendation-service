@@ -107,6 +107,7 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
+    isDefault: false
 EOF
 
 echo "--------------------------------------------------"

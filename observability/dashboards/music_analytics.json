@@ -24,10 +24,10 @@
     {
       "id": 2,
       "title": "Top 10 Trending Tracks This Week",
-      "type": "table",
+      "type": "barchart",
       "datasource": {
-        "type": "doitintl-spark-datasource",
-        "uid": "SparkSQL"
+        "type": "influxdata-flightsql-datasource",
+        "uid": "influxdata-flightsql-datasource"
       },
       "description": "Queries the silver Delta table directly from MinIO via the Spark Thrift Server.",
       "gridPos": {
@@ -40,14 +40,77 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "doitintl-spark-datasource",
+            "type": "grafana-spark-datasource",
             "uid": "SparkSQL"
           },
           "queryType": "sql",
           "rawSql": "SELECT track_id, play_count FROM delta.`s3a://data/silver/weekly_trending_tracks` ORDER BY play_count DESC LIMIT 10",
           "format": "table"
         }
-      ]
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "text": {
+          "valueSize": 12
+        },
+        "legend": {
+          "displayMode": "hidden"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Total Listening Events",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdata-flightsql-datasource",
+        "uid": "influxdata-flightsql-datasource"
+      },
+      "description": "Total number of listening events in the data lake.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-spark-datasource",
+            "uid": "SparkSQL"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT count(*) as total_events FROM delta.`s3a://data/bronze/fact_listening_events`",
+          "format": "table"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
     }
   ],
   "schemaVersion": 37,

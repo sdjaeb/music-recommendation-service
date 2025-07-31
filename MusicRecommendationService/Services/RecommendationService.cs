@@ -62,14 +62,14 @@ public class RecommendationService : IRecommendationService
         var cfLookup = this.BuildSimilarityLookup(cfSongs);
         var cfCandidates = userLikedTracks
             .SelectMany(likedTrack => cfLookup.GetValueOrDefault(likedTrack, new List<(long, double)>()))
-            .Select(c => (c.otherTrack, c.score * _settings.ModelWeights.CollaborativeFiltering));
+            .Select(c => (c.Item1, c.Item2 * _settings.ModelWeights.CollaborativeFiltering));
         ApplyScores(cfCandidates);
 
         // b. Playlist-based Similarity Model
         var playlistSimilarityLookup = this.BuildSimilarityLookup(similarSongs);
         var playlistCandidates = userLikedTracks
             .SelectMany(likedTrack => playlistSimilarityLookup.GetValueOrDefault(likedTrack, new List<(long, double)>()))
-            .Select(c => (c.otherTrack, c.score * _settings.ModelWeights.Similarity));
+            .Select(c => (c.Item1, c.Item2 * _settings.ModelWeights.Similarity));
         ApplyScores(playlistCandidates);
 
         // c. Social Model (songs liked by followed users)

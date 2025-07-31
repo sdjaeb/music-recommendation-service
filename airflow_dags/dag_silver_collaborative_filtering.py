@@ -5,7 +5,7 @@ from datetime import datetime
 with DAG(
     dag_id="silver_collaborative_filtering_processing",
     start_date=datetime(2024, 1, 1),
-    schedule_interval=None,  # This DAG is manually triggered
+    schedule=None,  # This DAG is manually triggered
     catchup=False,
     tags=['spark', 'silver', 'recommendations'],
     doc_md="""

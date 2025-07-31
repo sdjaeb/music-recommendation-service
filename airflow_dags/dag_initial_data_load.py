@@ -75,7 +75,11 @@ with DAG(
         py_files="/opt/airflow/pyspark_jobs/spark_utils.py",
         conn_id="spark_default",
         packages=SPARK_PACKAGES,
-        verbose=True
+        verbose=True,
+        conf={
+            "spark.pyspark.driver.python": "python3",
+            "spark.pyspark.python": "/usr/local/bin/python3",
+        },
     )
 
     upload_to_landing_zone >> process_with_spark
